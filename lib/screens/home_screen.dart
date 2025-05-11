@@ -1,0 +1,215 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../services/log_service.dart';
+import 'daily_log_screen.dart';
+import 'date_picker_screen.dart';
+import 'inventory_screen.dart';
+import 'add_food_screen.dart';
+import '../widgets/theme_settings_button.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  double todayCal = 0;
+  final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  final String prettyToday = DateFormat.yMMMMd().format(DateTime.now());
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadTodayCalories();
+  }
+  
+  Future<void> _loadTodayCalories() async {
+    final logService = LogService();
+    final entries = await logService.getLogEntriesByDate(todayDate);
+    
+    double sum = 0;
+    for (var entry in entries) {
+      sum += entry.calories! * entry.amount / 100;
+    }
+    
+    setState(() {
+      todayCal = sum;
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+    children: [
+      Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 32),
+              Text(
+                'Calorie Tracker',
+                style: TextStyle(
+                  fontSize: 36, 
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onBackground,
+                ),
+              ),
+              const SizedBox(height: 32),
+              
+              // Today Card
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DailyLogScreen(date: todayDate),
+                    ),
+                  ).then((_) => _loadTodayCalories());
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.all(24),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              right: BorderSide(
+                                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Today's Log",
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              Text(
+                                prettyToday,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 100,
+                        child: Column(
+                          children: [
+                            Text(
+                              todayCal.toStringAsFixed(0),
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                            Text(
+                              'kcal',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 32),
+              
+              // Action Buttons
+              _buildActionButton(
+                'Select Date',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DatePickerScreen()),
+                  );
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              
+              _buildActionButton(
+                'Inventory',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const InventoryScreen()),
+                  );
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              
+              _buildActionButton(
+                'Quick Add (Today)',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddFoodScreen(date: todayDate),
+                    ),
+                  ).then((_) => _loadTodayCalories());
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    const ThemeSettingsButton(),
+    ],
+    );
+  }
+  
+  Widget _buildActionButton(String text, VoidCallback onPressed) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          elevation: 5,
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
