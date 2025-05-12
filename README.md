@@ -1,4 +1,4 @@
-# Calorium - Flutter Edition
+# Calorium
 
 A Flutter implementation of the Calorium app, supporting Material You design principles and 120Hz animations.
 
