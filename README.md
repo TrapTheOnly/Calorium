@@ -1,6 +1,6 @@
-# Calorie Tracker - Flutter Edition
+# Calorium - Flutter Edition
 
-A Flutter implementation of the Calorie Tracker app, supporting Material You design principles and 120Hz animations.
+A Flutter implementation of the Calorium app, supporting Material You design principles and 120Hz animations.
 
 ## Features
 

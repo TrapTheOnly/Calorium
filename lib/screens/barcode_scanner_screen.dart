@@ -35,6 +35,17 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         
         // Extract nutrition values
         double calories = 0, fat = 0, carbs = 0, protein = 0;
+        double servingSize = 100.0;
+        String portionDescription = "100g";
+
+        if (product.servingSize != null && product.servingSize!.isNotEmpty) {
+          final RegExp regExp = RegExp(r'(\d+(\.\d+)?)');
+          final match = regExp.firstMatch(product.servingSize!);
+          if (match != null) {
+            servingSize = double.tryParse(match.group(1) ?? "") ?? 100.0;
+            portionDescription = product.servingSize!;
+          }
+        }
         
         if (product.nutriments != null) {
           final nutriments = product.nutriments!;
@@ -57,7 +68,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
           carbs: carbs,
           protein: protein,
           type: 'simple',
-          fromBarcode: true,  // Mark as from barcode
+          defaultPortionSize: servingSize,
+          portionDescription: portionDescription,
         );
 
         // Navigate to AddFoodScreen with the scanned data
@@ -67,15 +79,10 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             MaterialPageRoute(
               builder: (context) => AddFoodScreen(
                 food: food,
-                onSave: () {
-                  // Return to inventory with a refresh signal
-                  Navigator.pop(context, true);
-                },
               ),
             ),
-          ).then((refreshNeeded) {
-            // Pass the refresh signal up to the inventory screen
-            Navigator.pop(context, refreshNeeded);
+          ).then((_) {
+            Navigator.pop(context, true);
           });
         }
       } else {

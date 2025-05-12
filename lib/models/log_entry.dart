@@ -1,3 +1,5 @@
+// In lib/models/log_entry.dart, update the LogEntry class:
+
 class LogEntry {
   final int? id;
   final int foodId;
@@ -8,6 +10,9 @@ class LogEntry {
   final double? fat;
   final double? carbs;
   final double? protein;
+  final double? portions;
+  final double? defaultPortionSize;
+  final String? portionDescription;
   
   LogEntry({
     this.id,
@@ -19,6 +24,9 @@ class LogEntry {
     this.fat,
     this.carbs,
     this.protein,
+    this.portions = 1.0,
+    this.defaultPortionSize,
+    this.portionDescription,
   });
   
   Map<String, dynamic> toMap() {
@@ -27,6 +35,7 @@ class LogEntry {
       'foodId': foodId,
       'amount': amount,
       'date': date,
+      'portions': portions,
     };
   }
   
@@ -41,6 +50,9 @@ class LogEntry {
       fat: map['fat'],
       carbs: map['carbs'],
       protein: map['protein'],
+      portions: map['portions'] ?? 1.0,
+      defaultPortionSize: map['defaultPortionSize'],
+      portionDescription: map['portionDescription'],
     );
   }
 }

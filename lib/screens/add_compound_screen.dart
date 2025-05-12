@@ -157,7 +157,8 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
     if (!canSave) return;
     
     final db = await DatabaseService.instance.database;
-    final factor = summary['weight']! > 0 ? 100 / summary['weight']! : 0;
+    final totalWeight = summary['weight']!;
+    final factor = totalWeight > 0 ? 100 / totalWeight : 0;
     
     final per100 = {
       'cal': summary['cal']! * factor,
@@ -178,6 +179,8 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
             'fat': per100['fat'],
             'carbs': per100['carb'],
             'protein': per100['prot'],
+            'defaultPortionSize': totalWeight, 
+            'portionDescription': '1 serving', 
           },
           where: 'id = ?',
           whereArgs: [id],
@@ -198,6 +201,8 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
             'carbs': per100['carb'],
             'protein': per100['prot'],
             'type': 'compound',
+            'defaultPortionSize': totalWeight, // Set portion size to total weight
+            'portionDescription': '1 serving', // Default description
           },
         );
         

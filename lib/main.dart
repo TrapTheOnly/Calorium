@@ -17,7 +17,7 @@ void main() {
     statusBarColor: Colors.transparent,
   ));
   
-  OpenFoodAPIConfiguration.userAgent = UserAgent(name: 'Calorie Tracker App - Flutter - Version 1.0');
+  OpenFoodAPIConfiguration.userAgent = UserAgent(name: 'Calorium App - Flutter - Version 1.0');
   OpenFoodAPIConfiguration.globalLanguages = [OpenFoodFactsLanguage.ENGLISH];
   OpenFoodAPIConfiguration.globalCountry = OpenFoodFactsCountry.USA;
   OpenFoodAPIConfiguration.globalUser = User(userId: 'calorie_tracker_app', password: 'nx9*HCx8RJ3YP&WH');
@@ -59,7 +59,7 @@ class MyApp extends StatelessWidget {
         }
 
         return MaterialApp(
-          title: 'Calorie Tracker',
+          title: 'Calorium',
           debugShowCheckedModeBanner: false,
           
           theme: ThemeData(

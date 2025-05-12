@@ -8,9 +8,8 @@ import '../services/log_service.dart';
 class AddFoodScreen extends StatefulWidget {
   final Food? food;
   final String? date;
-  final VoidCallback? onSave; // Add callback for custom navigation
 
-  const AddFoodScreen({Key? key, this.food, this.date, this.onSave}) : super(key: key);
+  const AddFoodScreen({Key? key, this.food, this.date}) : super(key: key);
 
   @override
   State<AddFoodScreen> createState() => _AddFoodScreenState();
@@ -23,13 +22,17 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   final _carbsController = TextEditingController();
   final _proteinController = TextEditingController();
   final _amountController = TextEditingController();
+  final _portionSizeController = TextEditingController();
+  final _portionDescController = TextEditingController();
+  final _portionsController = TextEditingController();
   
   final FoodService _foodService = FoodService();
   final LogService _logService = LogService();
   
-  // Keep the original check but add logic for barcode foods
+  bool _usePortions = false; // Toggle between grams and portions
+  
   bool get isEditing => widget.food != null;
-  bool get isBarcodeFood => widget.food?.fromBarcode == true;
+  bool get isFromBarcode => widget.food != null && widget.food!.id == null;
 
   @override
   void initState() {
@@ -40,6 +43,17 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _fatController.text = widget.food!.fat.toString();
       _carbsController.text = widget.food!.carbs.toString();
       _proteinController.text = widget.food!.protein.toString();
+      _portionSizeController.text = widget.food!.defaultPortionSize.toString();
+      _portionDescController.text = widget.food!.portionDescription;
+    } else {
+      _portionSizeController.text = "100";
+      _portionDescController.text = "100g";
+    }
+
+    // Default for amount/portions when logging
+    if (widget.date != null) {
+      _amountController.text = "100";
+      _portionsController.text = "1";
     }
   }
 
@@ -51,17 +65,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     _carbsController.dispose();
     _proteinController.dispose();
     _amountController.dispose();
+    _portionSizeController.dispose();
+    _portionDescController.dispose();
+    _portionsController.dispose();
     super.dispose();
   }
 
   Future<void> _saveExisting() async {
     if (_nameController.text.trim().isEmpty) return;
-    
-    if (isBarcodeFood) {
-      // For barcode foods, treat as new food instead of updating
-      await _saveAndLogNew();
-      return;
-    }
     
     final updatedFood = Food(
       id: widget.food!.id,
@@ -71,60 +82,45 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       carbs: double.tryParse(_carbsController.text) ?? 0,
       protein: double.tryParse(_proteinController.text) ?? 0,
       type: 'simple',
+      defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
+      portionDescription: _portionDescController.text,
     );
     
     await _foodService.updateFood(updatedFood);
-    
-    if (widget.onSave != null) {
-      widget.onSave!();
-    } else {
-      Navigator.pop(context, updatedFood.id);
-    }
+    Navigator.pop(context, updatedFood.id);
   }
 
   Future<void> _addLogExisting() async {
-    if (_amountController.text.isEmpty || widget.date == null) return;
+    if (widget.date == null) return;
+    if (_usePortions && _portionsController.text.isEmpty) return;
+    if (!_usePortions && _amountController.text.isEmpty) return;
     
-    if (isBarcodeFood) {
-      // For barcode foods, insert as new food first
-      final foodId = await _insertSimple();
-      await _logService.insertLogEntry(
-        LogEntry(
-          foodId: foodId,
-          amount: double.parse(_amountController.text),
-          date: widget.date!,
-        ),
-      );
-      
-      if (widget.onSave != null) {
-        widget.onSave!();
-      } else {
-        Navigator.pop(context, foodId);
-        Navigator.popUntil(
-          context, 
-          (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
-        );
-      }
-      return;
+    double amount;
+    double portions = 1.0;
+    
+    if (_usePortions) {
+      // Calculate grams based on portions and default portion size
+      portions = double.parse(_portionsController.text);
+      amount = portions * (widget.food!.defaultPortionSize);
+    } else {
+      // Direct gram input
+      amount = double.parse(_amountController.text);
     }
     
     await _logService.insertLogEntry(
       LogEntry(
         foodId: widget.food!.id!,
-        amount: double.parse(_amountController.text),
+        amount: amount,
+        portions: portions,
         date: widget.date!,
       ),
     );
     
-    if (widget.onSave != null) {
-      widget.onSave!();
-    } else {
-      Navigator.pop(context, widget.food!.id);
-      Navigator.popUntil(
-        context, 
-        (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
-      );
-    }
+    Navigator.pop(context, widget.food!.id);
+    Navigator.popUntil(
+      context, 
+      (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
+    );
   }
 
   Future<int> _insertSimple() async {
@@ -135,6 +131,8 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       carbs: double.tryParse(_carbsController.text) ?? 0,
       protein: double.tryParse(_proteinController.text) ?? 0,
       type: 'simple',
+      defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
+      portionDescription: _portionDescController.text,
     );
     
     return await _foodService.insertFood(newFood);
@@ -142,34 +140,43 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
 
   Future<void> _saveAndLogNew() async {
     if (_nameController.text.trim().isEmpty) return;
-    if (widget.date != null && _amountController.text.isEmpty) return;
+    if (widget.date != null) {
+      if (_usePortions && _portionsController.text.isEmpty) return;
+      if (!_usePortions && _amountController.text.isEmpty) return;
+    }
     
     final foodId = await _insertSimple();
     
     if (widget.date != null) {
+      double amount;
+      double portions = 1.0;
+      
+      if (_usePortions) {
+        // Calculate grams based on portions and default portion size
+        portions = double.parse(_portionsController.text);
+        final portionSize = double.tryParse(_portionSizeController.text) ?? 100.0;
+        amount = portions * portionSize;
+      } else {
+        // Direct gram input
+        amount = double.parse(_amountController.text);
+      }
+      
       await _logService.insertLogEntry(
         LogEntry(
           foodId: foodId,
-          amount: double.parse(_amountController.text),
+          amount: amount,
+          portions: portions,
           date: widget.date!,
         ),
       );
       
-      if (widget.onSave != null) {
-        widget.onSave!();
-      } else {
-        Navigator.pop(context, foodId);
-        Navigator.popUntil(
-          context, 
-          (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
-        );
-      }
+      Navigator.pop(context, foodId);
+      Navigator.popUntil(
+        context, 
+        (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
+      );
     } else {
-      if (widget.onSave != null) {
-        widget.onSave!();
-      } else {
-        Navigator.pop(context, foodId);
-      }
+      Navigator.pop(context, foodId);
     }
   }
 
@@ -178,22 +185,26 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     if (_caloriesController.text.isEmpty || 
         double.tryParse(_caloriesController.text) == null || 
         double.tryParse(_caloriesController.text)! <= 0) return false;
-    if (widget.date != null && (_amountController.text.isEmpty || 
-        double.tryParse(_amountController.text) == null || 
-        double.tryParse(_amountController.text)! <= 0)) return false;
+    if (_portionSizeController.text.isEmpty || 
+        double.tryParse(_portionSizeController.text) == null || 
+        double.tryParse(_portionSizeController.text)! <= 0) return false;
+    if (widget.date != null) {
+      if (_usePortions && (_portionsController.text.isEmpty || 
+          double.tryParse(_portionsController.text) == null || 
+          double.tryParse(_portionsController.text)! <= 0)) return false;
+      if (!_usePortions && (_amountController.text.isEmpty || 
+          double.tryParse(_amountController.text) == null || 
+          double.tryParse(_amountController.text)! <= 0)) return false;
+    }
     return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    final String titleText = isBarcodeFood 
-        ? 'Add Scanned Food' 
-        : (isEditing ? 'Edit Food' : 'Add Food');
-    
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -216,14 +227,25 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                titleText,
+                isEditing && !isFromBarcode ? 'Edit Food' : (isFromBarcode ? 'Add Scanned Food' : 'Add Food'),
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 24),
+              
+              // Food info section
+              Text(
+                'Food Information',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
               
               _buildFormInput('Name', _nameController),
               _buildFormInput('Calories/100g', _caloriesController, numeric: true),
@@ -231,32 +253,196 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
               _buildFormInput('Carbs/100g', _carbsController, numeric: true),
               _buildFormInput('Protein/100g', _proteinController, numeric: true),
               
-              if (widget.date != null)
-                _buildFormInput('Amount eaten (g)', _amountController, numeric: true),
+              const SizedBox(height: 12),
+              
+              // Portion size section
+              Text(
+                'Portion Information',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Define a standard portion size for this food',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              _buildFormInput('Portion Size (g)', _portionSizeController, numeric: true),
+              _buildFormInput('Description (e.g. "1 bar", "1 cup")', _portionDescController),
+              
+              // Logging section - only show when adding to daily log
+              if (widget.date != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Add to Log',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // // Toggle between portions and grams
+                // Row(
+                //   children: [
+                //     Expanded(
+                //       child: RadioListTile<bool>(
+                //         title: const Text('Grams'),
+                //         value: false,
+                //         groupValue: _usePortions,
+                //         onChanged: (bool? value) {
+                //           setState(() {
+                //             _usePortions = value ?? false;
+                //           });
+                //         },
+                //       ),
+                //     ),
+                //     Expanded(
+                //       child: RadioListTile<bool>(
+                //         title: const Text('Portions'),
+                //         value: true,
+                //         groupValue: _usePortions,
+                //         onChanged: (bool? value) {
+                //           setState(() {
+                //             _usePortions = value ?? true;
+                //           });
+                //         },
+                //       ),
+                //     ),
+                //   ],
+                // ),
+                
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16.0),
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  child: Stack(
+                    children: [
+                      // Animated selection indicator
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeInOut,
+                        left: _usePortions ? MediaQuery.of(context).size.width / 2 - 24 : 0,
+                        right: _usePortions ? 0 : MediaQuery.of(context).size.width / 2 - 24,
+                        top: 4,
+                        bottom: 4,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(21),
+                          ),
+                        ),
+                      ),
+                      // Tab buttons
+                      Row(
+                        children: [
+                          // Grams tab
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _usePortions = false;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(25),
+                                child: Center(
+                                  child: Text(
+                                    'Grams',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: !_usePortions 
+                                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Portions tab
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _usePortions = true;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(25),
+                                child: Center(
+                                  child: Text(
+                                    'Portions',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: _usePortions 
+                                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                if (_usePortions)
+                  _buildFormInput('Number of portions', _portionsController, numeric: true)
+                else
+                  _buildFormInput('Amount eaten (g)', _amountController, numeric: true),
+                
+                // Show estimation of actual amount
+                if (_usePortions && double.tryParse(_portionsController.text) != null && double.tryParse(_portionSizeController.text) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20.0),
+                    child: Text(
+                      'Estimated amount: ${(double.parse(_portionsController.text) * double.parse(_portionSizeController.text)).toStringAsFixed(1)}g',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontStyle: FontStyle.italic,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
               
               const SizedBox(height: 20),
               
-              if (isEditing && !isBarcodeFood) ...[
+              if (isEditing && !isFromBarcode) ...[
                 _buildPrimaryButton(
                   'Save Changes',
                   _saveExisting,
-                  disabled: _nameController.text.trim().isEmpty,
+                  disabled: _nameController.text.trim().isEmpty || _portionSizeController.text.isEmpty,
                 ),
                 if (widget.date != null)
                   _buildPrimaryButton(
                     'Add to Log',
                     _addLogExisting,
-                    disabled: _amountController.text.isEmpty,
+                    disabled: (_usePortions && _portionsController.text.isEmpty) || 
+                              (!_usePortions && _amountController.text.isEmpty),
                   ),
-              ] else if (isBarcodeFood) ...[
-                _buildPrimaryButton(
-                  'Save Scanned Food',
-                  _saveAndLogNew,
-                  disabled: !canSaveAndLog,
-                ),
               ] else
                 _buildPrimaryButton(
-                  'Save & Log Entry',
+                  'Save' + (widget.date != null ? ' & Log Entry' : ''),
                   _saveAndLogNew,
                   disabled: !canSaveAndLog,
                 ),
@@ -334,7 +520,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           onPressed: disabled ? null : onPressed,
           style: ElevatedButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Colors.white,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
             disabledBackgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.4),
             disabledForegroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 20),

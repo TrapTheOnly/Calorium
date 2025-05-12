@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const SizedBox(height: 32),
               Text(
-                'Calorie Tracker',
+                'Calorium',
                 style: TextStyle(
                   fontSize: 36, 
                   fontWeight: FontWeight.bold,

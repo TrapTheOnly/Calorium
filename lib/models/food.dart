@@ -7,7 +7,8 @@ class Food {
   final double protein;
   final String type;
   final bool isArchived;
-  final bool fromBarcode; // New flag to identify barcode-scanned foods
+  final double defaultPortionSize;
+  final String portionDescription;
   
   Food({
     this.id,
@@ -18,7 +19,8 @@ class Food {
     required this.protein,
     this.type = 'simple',
     this.isArchived = false,
-    this.fromBarcode = false, // Default to false
+    this.defaultPortionSize = 100.0,
+    this.portionDescription = "100g",
   });
   
   Map<String, dynamic> toMap() {
@@ -31,7 +33,8 @@ class Food {
       'protein': protein,
       'type': type,
       'isArchived': isArchived ? 1 : 0,
-      // fromBarcode is not stored in the database, it's just a transient flag
+      'defaultPortionSize': defaultPortionSize,
+      'portionDescription': portionDescription,
     };
   }
   
@@ -45,6 +48,8 @@ class Food {
       protein: map['protein'],
       type: map['type'] ?? 'simple',
       isArchived: map['isArchived'] == 1,
+      defaultPortionSize: map['defaultPortionSize'] ?? 100.0,
+      portionDescription: map['portionDescription'] ?? "100g",
     );
   }
 }

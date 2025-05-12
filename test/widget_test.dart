@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:calorie_tracker/main.dart';
 
 void main() {
-  testWidgets('Calorie tracker app loads', (WidgetTester tester) async {
+  testWidgets('Calorium app loads', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const CalorieTrackerApp());
 

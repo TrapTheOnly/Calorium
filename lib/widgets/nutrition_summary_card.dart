@@ -114,9 +114,9 @@ class NutritionSummaryCard extends StatelessWidget {
     double value, 
     Color color
     ) {
-    // Check if value exceeds 100g
-    final bool isExceeding = value > 100;
-    final int displayValue = isExceeding ? 100 : value.round();
+    // Check if value exceeds 150g
+    final bool isExceeding = value > 150;
+    final int displayValue = isExceeding ? 150 : value.round();
     
     return Expanded(
         child: Column(
@@ -142,7 +142,7 @@ class NutritionSummaryCard extends StatelessWidget {
                         ),
                         ),
                     ),
-                    Flexible(flex: 100 - displayValue, child: Container()),
+                    Flexible(flex: 150 - displayValue, child: Container()),
                     ],
                 ),
                 ),
@@ -188,12 +188,7 @@ class NutritionSummaryCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 if (isExceeding)
                 Tooltip(
-                    message: 'Value exceeds recommended amount',
-                    child: Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.red,
-                    size: 16,
-                    ),
+                    message: 'Value exceeds recommended amount'
                 ),
             ],
             ),

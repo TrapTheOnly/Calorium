@@ -134,6 +134,8 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                                       'fat': entry.fat!,
                                       'carbs': entry.carbs!,
                                       'protein': entry.protein!,
+                                      'defaultPortionSize': entry.defaultPortionSize ?? 100.0,
+                                      'portionDescription': entry.portionDescription ?? '100g',
                                     },
                                     date: widget.date,
                                     editMode: true,

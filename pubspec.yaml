@@ -27,6 +27,13 @@ environment:
 # dependencies can be manually updated by changing the version numbers below to
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
+flutter_icons:
+  adaptive_icon_background: "#FFFFFF" # For Android adaptive icons
+  adaptive_icon_foreground: "assets/logo_foreground.png"
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+
 dependencies:
   flutter:
     sdk: flutter

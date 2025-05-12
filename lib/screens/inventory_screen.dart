@@ -117,24 +117,45 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     }
   }
   
-  Future<void> _deleteFood(int id, bool isSimple) async {
-    try {
-      await _foodService.deleteFood(id);
-      
-      // Refresh the correct list
-      if (isSimple) {
-        _loadSimpleFoods();
-      } else {
-        _loadCompoundFoods();
+  Future<void> _deleteFood(int id, bool isSimple, String foodName) async {
+    final bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Food'),
+        content: Text('Are you sure you want to delete "$foodName"?\n\nThis cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ) ?? false;
+    
+    if (confirm) {
+      try {
+        await _foodService.deleteFood(id);
+        
+        // Refresh the correct list
+        if (isSimple) {
+          _loadSimpleFoods();
+        } else {
+          _loadCompoundFoods();
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Food deleted')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting food: ${e.toString()}')),
+        );
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Food deleted')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting food: ${e.toString()}')),
-      );
     }
   }
 
@@ -305,6 +326,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                                 'fat': food.fat,
                                 'carbs': food.carbs,
                                 'protein': food.protein,
+                                'defaultPortionSize': food.defaultPortionSize,
+                                'portionDescription': food.portionDescription,
                               },
                               date: widget.date!,
                             ),
@@ -332,7 +355,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   ),
                 ),
                 TextButton(
-                  onPressed: () => _deleteFood(food.id!, isSimple),
+                  onPressed: () => _deleteFood(food.id!, isSimple, food.name),
                   style: TextButton.styleFrom(
                     backgroundColor: const Color(0xFFFF4455),
                     foregroundColor: Colors.white,
