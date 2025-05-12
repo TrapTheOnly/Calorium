@@ -20,6 +20,7 @@ A Flutter implementation of the Calorium app, supporting Material You design pri
 4. Run `flutter run` to start the app
 
 ## Project Structure
+```
 lib/
 ├── models/ # Data models
 ├── screens/ # App screens
@@ -27,7 +28,7 @@ lib/
 ├── utils/ # Helper utilities
 ├── widgets/ # Reusable widgets
 └── main.dart # Entry point
-
+```
 
 ## Performance Optimizations
 
