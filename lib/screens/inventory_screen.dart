@@ -226,36 +226,36 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
               
               // Tab content with animated buttons
               Expanded(
-                child: Stack(
+                child: Column(
                   children: [
-                    TabBarView(
-                      controller: _tabController,
-                      children: [
-                        // Simple foods tab
-                        _buildFoodsList(
-                          foods: _simpleFoods,
-                          isLoading: _isLoadingSimple,
-                          isSimple: true,
-                          onRefresh: _loadSimpleFoods,
-                        ),
-                        
-                        // Compound foods tab
-                        _buildFoodsList(
-                          foods: _compoundFoods,
-                          isLoading: _isLoadingCompound,
-                          isSimple: false,
-                          onRefresh: _loadCompoundFoods,
-                        ),
-                      ],
+                    // Tab content
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          // Simple foods tab
+                          _buildFoodsList(
+                            foods: _simpleFoods,
+                            isLoading: _isLoadingSimple,
+                            isSimple: true,
+                            onRefresh: _loadSimpleFoods,
+                          ),
+                          
+                          // Compound foods tab
+                          _buildFoodsList(
+                            foods: _compoundFoods,
+                            isLoading: _isLoadingCompound,
+                            isSimple: false,
+                            onRefresh: _loadCompoundFoods,
+                          ),
+                        ],
+                      ),
                     ),
                     
-                    // Bottom Action Buttons
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 24,
-                      child: _buildAnimatedButtons(),
-                    ),
+                    // Bottom Action Buttons - moved outside the stack
+                    const SizedBox(height: 16),
+                    _buildAnimatedButtons(),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -387,91 +387,58 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     return AnimatedBuilder(
       animation: _tabController,
       builder: (context, child) {
-        // Calculate animation values for tab transitions
-        final screenWidth = MediaQuery.of(context).size.width;
-        return Stack(
-          children: [
-            Transform.translate(
-              offset: Offset((_tabController.index - 0) * screenWidth, 0),
-              child: Opacity(
-                opacity: _calculateButtonOpacity(0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildActionButton(
-                        'Add',
-                        Icons.add_circle_outline,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const AddFoodScreen()),
-                          ).then((_) => _loadSimpleFoods());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildActionButton(
-                        'Scan Barcode',
-                        Icons.qr_code_outlined,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
-                          ).then((refreshNeeded) {
-                            if (refreshNeeded == true) {
-                              print('Refreshing inventory after barcode scan');
-                              _loadSimpleFoods();
-                            }
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // Compound tab button
-            Transform.translate(
-              offset: Offset((_tabController.index - 1) * screenWidth, 0),
-              child: Opacity(
-                opacity: _calculateButtonOpacity(1),
+        // Show different buttons based on current tab
+        if (_tabController.index == 0) {
+          // Simple foods tab - show Add and Scan Barcode buttons
+          return Row(
+            children: [
+              Expanded(
                 child: _buildActionButton(
-                  'Add Compound',
+                  'Add',
                   Icons.add_circle_outline,
                   () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const AddCompoundScreen()),
-                    ).then((_) => _loadCompoundFoods());
+                      MaterialPageRoute(builder: (context) => const AddFoodScreen()),
+                    ).then((_) => _loadSimpleFoods());
                   },
                 ),
               ),
-            ),
-          ],
-        );
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildActionButton(
+                  'Scan Barcode',
+                  Icons.qr_code_outlined,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+                    ).then((refreshNeeded) {
+                      if (refreshNeeded == true) {
+                        print('Refreshing inventory after barcode scan');
+                        _loadSimpleFoods();
+                      }
+                    });
+                  },
+                ),
+              ),
+            ],
+          );
+        } else {
+          // Compound foods tab - show Add Compound button
+          return _buildActionButton(
+            'Add Compound',
+            Icons.add_circle_outline,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AddCompoundScreen()),
+              ).then((_) => _loadCompoundFoods());
+            },
+          );
+        }
       },
     );
-  }
-  
-  // Calculate button opacity based on tab position and animation value
-  double _calculateButtonOpacity(int tabIndex) {
-    // If this is the current tab, show fully
-    if (_tabController.index == tabIndex) return 1.0;
-    
-    // If animation is in progress, calculate based on animation value
-    if (_tabController.animation != null) {
-      final animationValue = _tabController.animation!.value;
-      final distance = (animationValue - tabIndex).abs();
-      
-      // Only show when tab is close to being active
-      if (distance < 1.0) {
-        return 1.0 - distance;
-      }
-    }
-    
-    return 0.0; // Hide otherwise
   }
   
   Widget _buildActionButton(String text, IconData icon, VoidCallback onTap) {

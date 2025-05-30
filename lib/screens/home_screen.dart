@@ -4,8 +4,8 @@ import '../services/log_service.dart';
 import 'daily_log_screen.dart';
 import 'date_picker_screen.dart';
 import 'inventory_screen.dart';
-import 'add_food_screen.dart';
-import '../widgets/theme_settings_button.dart';
+import 'ai_quick_add_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -168,14 +168,26 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
               
               _buildActionButton(
-                'Quick Add (Today)',
+                'AI Quick Add (Today)',
                 () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => AddFoodScreen(date: todayDate),
+                      builder: (context) => AiQuickAddScreen(date: todayDate),
                     ),
                   ).then((_) => _loadTodayCalories());
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              
+              _buildActionButton(
+                'Settings',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  );
                 },
               ),
             ],
@@ -183,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ),
-    const ThemeSettingsButton(),
     ],
     );
   }
