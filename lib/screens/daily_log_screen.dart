@@ -4,6 +4,7 @@ import '../models/log_entry.dart';
 import '../services/log_service.dart';
 import 'inventory_screen.dart';
 import 'log_entry_screen.dart';
+import 'settings_screen.dart';
 import '../widgets/nutrition_summary_card.dart';
 
 class DailyLogScreen extends StatefulWidget {
@@ -50,6 +51,17 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
       'carb': carb,
       'prot': prot,
     };
+  }
+
+  void _navigateToSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SettingsScreen(),
+      ),
+    );
+    // Refresh the screen when returning from settings
+    setState(() {});
   }
 
   @override
@@ -105,6 +117,7 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                   'fat': totals['fat']!,
                   'carb': totals['carb']!,
                 },
+                onSetTargetsTap: _navigateToSettings,
               ),
               const SizedBox(height: 28),
               

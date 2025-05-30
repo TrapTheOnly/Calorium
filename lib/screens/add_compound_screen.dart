@@ -323,9 +323,7 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
                   'prot': summary['prot']!,
                   'fat': summary['fat']!,
                   'carb': summary['carb']!,
-                  'weight': summary['weight']!,
                 },
-                showWeight: true,
               ),
               const SizedBox(height: 20),
               
