@@ -13,96 +13,83 @@ class SchedulerService {
   static Future<void> initialize() async {
     if (_isInitialized) return;
 
-    tz.initializeTimeZones();
+    try {
+      tz.initializeTimeZones();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
 
-    const initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
+      const initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      );
 
-    await _notifications.initialize(initSettings);
-    
-    // Request permissions
-    await _requestPermissions();
-    
-    _isInitialized = true;
+      await _notifications.initialize(initSettings);
+      
+      // Request permissions
+      await _requestPermissions();
+      
+      _isInitialized = true;
+      print('Notification system initialized successfully');
+    } catch (e) {
+      print('Warning: Failed to initialize notification system: $e');
+      // Mark as initialized to prevent repeated failed attempts
+      _isInitialized = true;
+    }
   }
 
   static Future<void> _requestPermissions() async {
-    // For Android 13+ (API level 33+), request notification permission
-    await _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-        
-    await _notifications
-        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+    try {
+      // For Android 13+ (API level 33+), request notification permission
+      await _notifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+          
+      await _notifications
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
+    } catch (e) {
+      print('Warning: Failed to request notification permissions: $e');
+    }
   }
 
   /// Schedule daily AI analysis at 10 PM
   static Future<void> scheduleDailyAnalysis() async {
-    if (!_isInitialized) await initialize();
-
-    // Cancel existing daily notifications
-    await _notifications.cancel(1000);
-
-    // Check if user has API key and complete profile
-    final hasApiKey = await SettingsService.hasGeminiApiKey();
-    final hasCompleteProfile = await SettingsService.hasCompleteProfile();
-    
-    if (!hasApiKey || !hasCompleteProfile) {
-      return; // Don't schedule if requirements not met
-    }
-
-    // Schedule for 10 PM today
-    final now = DateTime.now();
-    var scheduledDate = DateTime(now.year, now.month, now.day, 22, 0); // 10 PM
-    
-    // If it's already past 10 PM today, schedule for tomorrow
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
     try {
-      await _notifications.zonedSchedule(
-        1000, // Unique ID for daily analysis
-        'Daily Nutrition Analysis Ready',
-        'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
-        tz.TZDateTime.from(scheduledDate, tz.local),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'daily_analysis',
-            'Daily Nutrition Analysis',
-            channelDescription: 'Daily AI nutrition analysis notifications',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
-          ),
-          iOS: DarwinNotificationDetails(
-            categoryIdentifier: 'daily_analysis',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time, // Repeat daily at this time
-      );
+      if (!_isInitialized) await initialize();
 
-      print('Daily analysis scheduled for ${scheduledDate.toString()} (exact timing)');
-    } catch (e) {
-      // If exact scheduling fails, fall back to inexact scheduling
-      print('Exact scheduling failed, falling back to inexact scheduling: $e');
+      // Cancel existing daily notifications with error handling
+      try {
+        await _notifications.cancel(1000);
+      } catch (e) {
+        print('Warning: Could not cancel existing notification: $e');
+      }
+
+      // Check if user has API key and complete profile
+      final hasApiKey = await SettingsService.hasGeminiApiKey();
+      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
       
+      if (!hasApiKey || !hasCompleteProfile) {
+        return; // Don't schedule if requirements not met
+      }
+
+      // Schedule for 10 PM today
+      final now = DateTime.now();
+      var scheduledDate = DateTime(now.year, now.month, now.day, 22, 0); // 10 PM
+      
+      // If it's already past 10 PM today, schedule for tomorrow
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
       try {
         await _notifications.zonedSchedule(
           1000, // Unique ID for daily analysis
@@ -122,67 +109,76 @@ class SchedulerService {
               categoryIdentifier: 'daily_analysis',
             ),
           ),
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.time, // Repeat daily at this time
         );
 
-        print('Daily analysis scheduled for ${scheduledDate.toString()} (inexact timing)');
-      } catch (fallbackError) {
-        print('Failed to schedule daily analysis: $fallbackError');
+        print('Daily analysis scheduled for ${scheduledDate.toString()} (exact timing)');
+      } catch (e) {
+        // If exact scheduling fails, fall back to inexact scheduling
+        print('Exact scheduling failed, falling back to inexact scheduling: $e');
+        
+        try {
+          await _notifications.zonedSchedule(
+            1000, // Unique ID for daily analysis
+            'Daily Nutrition Analysis Ready',
+            'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
+            tz.TZDateTime.from(scheduledDate, tz.local),
+            const NotificationDetails(
+              android: AndroidNotificationDetails(
+                'daily_analysis',
+                'Daily Nutrition Analysis',
+                channelDescription: 'Daily AI nutrition analysis notifications',
+                importance: Importance.high,
+                priority: Priority.high,
+                icon: '@mipmap/ic_launcher',
+              ),
+              iOS: DarwinNotificationDetails(
+                categoryIdentifier: 'daily_analysis',
+              ),
+            ),
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.time, // Repeat daily at this time
+          );
+
+          print('Daily analysis scheduled for ${scheduledDate.toString()} (inexact timing)');
+        } catch (fallbackError) {
+          print('Failed to schedule daily analysis: $fallbackError');
+        }
       }
+    } catch (e) {
+      print('Error in scheduleDailyAnalysis: $e');
+      // Don't rethrow - notifications are not critical
     }
   }
 
   /// Schedule weekly analysis notification (Sundays at 8 PM)
   static Future<void> scheduleWeeklyAnalysis() async {
-    if (!_isInitialized) await initialize();
-
-    // Cancel existing weekly notifications
-    await _notifications.cancel(2000);
-
-    // Check if user has API key and complete profile
-    final hasApiKey = await SettingsService.hasGeminiApiKey();
-    final hasCompleteProfile = await SettingsService.hasCompleteProfile();
-    
-    if (!hasApiKey || !hasCompleteProfile) {
-      return; // Don't schedule if requirements not met
-    }
-
-    // Schedule for next Sunday at 8 PM
-    final now = DateTime.now();
-    var nextSunday = now.add(Duration(days: 7 - now.weekday));
-    nextSunday = DateTime(nextSunday.year, nextSunday.month, nextSunday.day, 20, 0); // 8 PM Sunday
-
     try {
-      await _notifications.zonedSchedule(
-        2000, // Unique ID for weekly analysis
-        'Weekly Nutrition Summary Ready',
-        'Your weekly nutrition report is ready! See how you\'ve been doing.',
-        tz.TZDateTime.from(nextSunday, tz.local),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'weekly_analysis',
-            'Weekly Nutrition Summary',
-            channelDescription: 'Weekly nutrition summary notifications',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
-          ),
-          iOS: DarwinNotificationDetails(
-            categoryIdentifier: 'weekly_analysis',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, // Repeat weekly
-      );
+      if (!_isInitialized) await initialize();
 
-      print('Weekly analysis scheduled for ${nextSunday.toString()} (exact timing)');
-    } catch (e) {
-      // If exact scheduling fails, fall back to inexact scheduling
-      print('Exact scheduling failed, falling back to inexact scheduling: $e');
+      // Cancel existing weekly notifications with error handling
+      try {
+        await _notifications.cancel(2000);
+      } catch (e) {
+        print('Warning: Could not cancel existing weekly notification: $e');
+      }
+
+      // Check if user has API key and complete profile
+      final hasApiKey = await SettingsService.hasGeminiApiKey();
+      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
       
+      if (!hasApiKey || !hasCompleteProfile) {
+        return; // Don't schedule if requirements not met
+      }
+
+      // Schedule for next Sunday at 8 PM
+      final now = DateTime.now();
+      var nextSunday = now.add(Duration(days: 7 - now.weekday));
+      nextSunday = DateTime(nextSunday.year, nextSunday.month, nextSunday.day, 20, 0); // 8 PM Sunday
+
       try {
         await _notifications.zonedSchedule(
           2000, // Unique ID for weekly analysis
@@ -202,15 +198,48 @@ class SchedulerService {
               categoryIdentifier: 'weekly_analysis',
             ),
           ),
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, // Repeat weekly
         );
 
-        print('Weekly analysis scheduled for ${nextSunday.toString()} (inexact timing)');
-      } catch (fallbackError) {
-        print('Failed to schedule weekly analysis: $fallbackError');
+        print('Weekly analysis scheduled for ${nextSunday.toString()} (exact timing)');
+      } catch (e) {
+        // If exact scheduling fails, fall back to inexact scheduling
+        print('Exact weekly scheduling failed, falling back to inexact: $e');
+        
+        try {
+          await _notifications.zonedSchedule(
+            2000, // Unique ID for weekly analysis
+            'Weekly Nutrition Summary Ready',
+            'Your weekly nutrition report is ready! See how you\'ve been doing.',
+            tz.TZDateTime.from(nextSunday, tz.local),
+            const NotificationDetails(
+              android: AndroidNotificationDetails(
+                'weekly_analysis',
+                'Weekly Nutrition Summary',
+                channelDescription: 'Weekly nutrition summary notifications',
+                importance: Importance.high,
+                priority: Priority.high,
+                icon: '@mipmap/ic_launcher',
+              ),
+              iOS: DarwinNotificationDetails(
+                categoryIdentifier: 'weekly_analysis',
+              ),
+            ),
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, // Repeat weekly
+          );
+
+          print('Weekly analysis scheduled for ${nextSunday.toString()} (inexact timing)');
+        } catch (fallbackError) {
+          print('Failed to schedule weekly analysis: $fallbackError');
+        }
       }
+    } catch (e) {
+      print('Error in scheduleWeeklyAnalysis: $e');
+      // Don't rethrow - notifications are not critical
     }
   }
 
@@ -325,24 +354,33 @@ class SchedulerService {
 
   /// Check and schedule notifications if needed (call this on app start)
   static Future<void> setupScheduledNotifications() async {
-    final hasApiKey = await SettingsService.hasGeminiApiKey();
-    final hasCompleteProfile = await SettingsService.hasCompleteProfile();
-    
-    if (hasApiKey && hasCompleteProfile) {
-      await scheduleDailyAnalysis();
-      await scheduleWeeklyAnalysis();
-      print('Notifications scheduled successfully');
-    } else {
-      print('Skipping notification setup - requirements not met');
+    try {
+      final hasApiKey = await SettingsService.hasGeminiApiKey();
+      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
+      
+      if (hasApiKey && hasCompleteProfile) {
+        await scheduleDailyAnalysis();
+        await scheduleWeeklyAnalysis();
+        print('Notifications scheduled successfully');
+      } else {
+        print('Skipping notification setup - requirements not met');
+      }
+    } catch (e) {
+      print('Error in setupScheduledNotifications: $e');
+      // Don't rethrow - let the app continue without notifications
     }
   }
 
   /// Cancel all scheduled notifications
   static Future<void> cancelAllNotifications() async {
-    if (!_isInitialized) await initialize();
-    
-    await _notifications.cancelAll();
-    print('All notifications cancelled');
+    try {
+      if (!_isInitialized) await initialize();
+      
+      await _notifications.cancelAll();
+      print('All notifications cancelled');
+    } catch (e) {
+      print('Error cancelling notifications: $e');
+    }
   }
 
   /// Show a test notification (for debugging)

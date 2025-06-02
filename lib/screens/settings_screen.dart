@@ -161,8 +161,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await SettingsService.setMacroTargets(protein, carbs, fat);
       }
 
-      // Setup notifications
-      await SchedulerService.setupScheduledNotifications();
+      // Setup notifications with error handling
+      try {
+        await SchedulerService.setupScheduledNotifications();
+      } catch (e) {
+        print('Warning: Failed to setup notifications: $e');
+        // Continue with saving - notifications are not critical
+      }
 
       // Update original values to current values
       _originalSex = _selectedSex;
@@ -1083,13 +1088,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Gemini AI API Key',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+              Row(
+                children: [
+                  Icon(
+                    Icons.vpn_key,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Gemini AI API Key',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               TextField(
@@ -1097,7 +1112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 obscureText: true,
                 style: const TextStyle(fontSize: 16),
                 decoration: InputDecoration(
-                  hintText: 'Enter your Gemini AI API key',
+                  hintText: 'Paste your Gemini API key here',
                   hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1125,13 +1140,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         
-        // Information Card
+        // How to Get API Key Section
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+            gradient: LinearGradient(
+              colors: [
+                Colors.blue.withOpacity(0.1),
+                Colors.blue.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.blue.withOpacity(0.3),
+              width: 1,
+            ),
           ),
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -1139,31 +1165,158 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 24,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.rocket_launch,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    'AI Nutrition Analysis',
+                    'Get Your Free API Key',
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _buildInfoStep('1', 'Daily Analysis', 'AI analyzes your food intake at 10 PM'),
+              
+              _buildApiStep('1', 'Visit Google AI Studio', 'Go to aistudio.google.com and sign in with your Google account'),
               const SizedBox(height: 12),
-              _buildInfoStep('2', 'Smart Suggestions', 'Get 5 personalized nutrition tips'),
+              _buildApiStep('2', 'Create API Key', 'Click "Get API Key" → "Create API Key" → "Create API key in new project"'),
               const SizedBox(height: 12),
-              _buildInfoStep('3', 'Motivation', 'Receive motivating quotes based on progress'),
-              const SizedBox(height: 12),
-              _buildInfoStep('4', 'Weekly Reports', 'Comprehensive weekly nutrition summaries'),
+              _buildApiStep('3', 'Copy & Secure', 'Copy the 40-character key and paste it above. Keep it private!'),
+              
               const SizedBox(height: 16),
+              
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '100% Free • No billing required',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        
+        // AI Features Section
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.purple.withOpacity(0.1),
+                Colors.purple.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.purple.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purple,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'AI-Powered Features',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              _buildFeatureCard(
+                Icons.analytics_outlined,
+                'Smart Daily Analysis',
+                'AI analyzes your daily food intake and provides personalized nutrition insights based on your goals and dietary patterns.',
+                Colors.orange,
+              ),
+              const SizedBox(height: 12),
+              
+              _buildFeatureCard(
+                Icons.lightbulb_outline,
+                'Personalized Suggestions',
+                'Get 5 tailored recommendations daily to improve your nutrition, optimize macros, and reach your health goals.',
+                Colors.blue,
+              ),
+              const SizedBox(height: 12),
+              
+              _buildFeatureCard(
+                Icons.favorite_outline,
+                'Motivational Coaching',
+                'Receive encouraging quotes and motivation based on your progress, helping you stay committed to your health journey.',
+                Colors.pink,
+              ),
+              const SizedBox(height: 12),
+              
+              _buildFeatureCard(
+                Icons.trending_up,
+                'Weekly Progress Reports',
+                'Comprehensive weekly summaries with insights, trends, and actionable recommendations for long-term success.',
+                Colors.green,
+              ),
+              const SizedBox(height: 12),
+              
+              _buildFeatureCard(
+                Icons.schedule,
+                'Automated Scheduling',
+                'Daily analysis at 10 PM and weekly reports on Sundays - all automated with smart notifications.',
+                Colors.indigo,
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Privacy & Security Note
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1175,42 +1328,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Row(
                       children: [
                         Icon(
-                          Icons.api,
+                          Icons.security,
                           color: Theme.of(context).colorScheme.primary,
                           size: 16,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Get your API key at ai.google.dev',
+                            'Privacy & Security',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                  children: [
-                    Icon(
-                      Icons.security,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Your API key is stored securely on your device',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    Text(
+                      '• Your API key is stored securely on your device only\n'
+                      '• Nutrition data is analyzed in real-time, not stored by Google\n'
+                      '• You maintain full control over your data and privacy\n'
+                      '• All AI processing happens through encrypted connections',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        height: 1.4,
                       ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -1222,21 +1367,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildInfoStep(String number, String title, String subtitle) {
+  Widget _buildApiStep(String number, String title, String description) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 24,
-          height: 24,
+          width: 28,
+          height: 28,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.blue,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Center(
             child: Text(
               number,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onPrimary,
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -1256,17 +1402,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
+              const SizedBox(height: 4),
               Text(
-                subtitle,
+                description,
                 style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.3,
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFeatureCard(IconData icon, String title, String description, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

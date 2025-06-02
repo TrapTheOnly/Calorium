@@ -65,26 +65,24 @@ class _HomeScreenState extends State<HomeScreen> {
   
   @override
   Widget build(BuildContext context) {
-    return Stack(
-    children: [
-      Scaffold(
+    return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Text(
                 'Calorium',
                 style: TextStyle(
-                  fontSize: 36, 
+                  fontSize: 34, 
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.onBackground,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               
               // Today Card
               GestureDetector(
@@ -101,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
                       Expanded(
@@ -121,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text(
                                 "Today's Log",
                                 style: TextStyle(
-                                  fontSize: 26,
+                                  fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                                 ),
@@ -129,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text(
                                 prettyToday,
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 15,
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                                 ),
                               ),
@@ -138,13 +136,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       SizedBox(
-                        width: 100,
+                        width: 80,
                         child: Column(
                           children: [
                             Text(
                               todayCal.toStringAsFixed(0),
                               style: TextStyle(
-                                fontSize: 24,
+                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.onPrimaryContainer,
                               ),
@@ -152,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               'kcal',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 13,
                                 color: Theme.of(context).colorScheme.onPrimaryContainer,
                               ),
                             ),
@@ -164,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               
               // Action Buttons
               _buildActionButton(
@@ -177,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               
               _buildActionButton(
                 'Inventory',
@@ -189,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               
               _buildActionButton(
                 'AI Quick Scan',
@@ -203,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               
               _buildActionButton(
                 'AI Recipe Generator',
@@ -217,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               
               _buildActionButton(
                 'Weekly Analysis',
@@ -256,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 isEnabled: _hasSevenDaysData,
               ),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               
               _buildActionButton(
                 'Settings',
@@ -267,12 +265,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
               ),
+              
+              // Bottom padding to ensure proper spacing from screen bottom
+              const SizedBox(height: 32),
             ],
           ),
         ),
       ),
-    ),
-    ],
     );
   }
   
@@ -284,16 +283,16 @@ class _HomeScreenState extends State<HomeScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          padding: const EdgeInsets.symmetric(vertical: 20),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
           ),
-          elevation: 5,
+          elevation: 4,
         ),
         child: Text(
           text,
           style: const TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
