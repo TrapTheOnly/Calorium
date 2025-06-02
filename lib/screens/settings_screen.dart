@@ -5,6 +5,7 @@ import '../utils/theme_provider.dart';
 import '../services/settings_service.dart';
 import '../services/scheduler_service.dart';
 import '../services/debug_service.dart';
+import '../widgets/custom_alert.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -26,11 +27,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedActivityLevel = 'moderate';
   String _selectedGoals = 'maintenance';
   bool _isLoading = false;
+  bool _isSaving = false;
+  bool _isInitialized = false;
+  
+  // Change tracking
+  bool _hasUnsavedChanges = false;
+  
+  // Original values for comparison
+  String? _originalSex;
+  String _originalActivityLevel = 'moderate';
+  String _originalGoals = 'maintenance';
+  String _originalApiKey = '';
+  String _originalAge = '';
+  String _originalWeight = '';
+  String _originalHeight = '';
+  String _originalProtein = '';
+  String _originalCarbs = '';
+  String _originalFat = '';
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadSettings().then((_) {
+      _isInitialized = true;
+      _setupChangeListeners();
+      _checkForChanges(); // Check once after initialization
+    });
+  }
+  
+  void _setupChangeListeners() {
+    _apiKeyController.addListener(_checkForChanges);
+    _ageController.addListener(_checkForChanges);
+    _weightController.addListener(_checkForChanges);
+    _heightController.addListener(_checkForChanges);
+    _proteinController.addListener(_checkForChanges);
+    _carbsController.addListener(_checkForChanges);
+    _fatController.addListener(_checkForChanges);
+  }
+  
+  void _checkForChanges() {
+    if (!_isInitialized) return; // Skip if not initialized
+    
+    final hasChanges = _apiKeyController.text != _originalApiKey ||
+        _ageController.text != _originalAge ||
+        _weightController.text != _originalWeight ||
+        _heightController.text != _originalHeight ||
+        _proteinController.text != _originalProtein ||
+        _carbsController.text != _originalCarbs ||
+        _fatController.text != _originalFat ||
+        _selectedSex != _originalSex ||
+        _selectedActivityLevel != _originalActivityLevel ||
+        _selectedGoals != _originalGoals;
+    
+    if (hasChanges != _hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = hasChanges;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -58,49 +111,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _proteinController.text = macroTargets?['protein']?.toString() ?? '';
         _carbsController.text = macroTargets?['carbs']?.toString() ?? '';
         _fatController.text = macroTargets?['fat']?.toString() ?? '';
+        
+        // Store original values
+        _originalSex = sex;
+        _originalActivityLevel = activityLevel;
+        _originalGoals = goals;
+        _originalApiKey = apiKey ?? '';
+        _originalAge = age?.toString() ?? '';
+        _originalWeight = weight?.toString() ?? '';
+        _originalHeight = height?.toString() ?? '';
+        _originalProtein = macroTargets?['protein']?.toString() ?? '';
+        _originalCarbs = macroTargets?['carbs']?.toString() ?? '';
+        _originalFat = macroTargets?['fat']?.toString() ?? '';
       });
     }
   }
 
-  Future<void> _saveApiKey() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _saveAllSettings() async {
+    setState(() => _isSaving = true);
 
     try {
+      // Save API key
       await SettingsService.setGeminiApiKey(_apiKeyController.text.trim());
       
-      // Setup notifications if profile is also complete
-      await SchedulerService.setupScheduledNotifications();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('API key saved successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving API key: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    try {
       // Save basic profile
       if (_ageController.text.isNotEmpty) {
         await SettingsService.setAge(int.tryParse(_ageController.text) ?? 0);
@@ -128,38 +161,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await SettingsService.setMacroTargets(protein, carbs, fat);
       }
 
-      // Setup notifications if API key is also available
+      // Setup notifications
       await SchedulerService.setupScheduledNotifications();
 
+      // Update original values to current values
+      _originalSex = _selectedSex;
+      _originalActivityLevel = _selectedActivityLevel;
+      _originalGoals = _selectedGoals;
+      _originalApiKey = _apiKeyController.text.trim();
+      _originalAge = _ageController.text;
+      _originalWeight = _weightController.text;
+      _originalHeight = _heightController.text;
+      _originalProtein = _proteinController.text;
+      _originalCarbs = _carbsController.text;
+      _originalFat = _fatController.text;
+
+      setState(() {
+        _hasUnsavedChanges = false;
+        _isSaving = false;
+      });
+
       if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-            content: Text('Settings saved successfully!'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'Settings Saved',
+          message: 'All your settings have been saved successfully!',
+        );
       }
     } catch (e) {
+      setState(() => _isSaving = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving settings: $e'),
-            backgroundColor: Colors.red,
-      ),
-    );
-  }
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Save Failed',
+          message: 'Error saving settings: $e',
+        );
+      }
     }
   }
 
-  double get _calculatedCalories {
-    final protein = double.tryParse(_proteinController.text) ?? 0;
-    final carbs = double.tryParse(_carbsController.text) ?? 0;
-    final fat = double.tryParse(_fatController.text) ?? 0;
-    return (protein * 4) + (carbs * 4) + (fat * 9);
+  Future<bool> _showUnsavedChangesDialog() async {
+    if (!_hasUnsavedChanges) return true;
+    
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => CustomAlert(
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Do you want to leave without saving?',
+        type: AlertType.warning,
+        actionButtonText: 'Save & Leave',
+        onActionPressed: () async {
+          Navigator.of(context).pop(false);
+          await _saveAllSettings();
+          if (mounted) Navigator.of(context).pop();
+        },
+        onClose: () => Navigator.of(context).pop(true),
+      ),
+    ) ?? false;
   }
 
   @override
   void dispose() {
+    // Remove change listeners
+    _apiKeyController.removeListener(_checkForChanges);
+    _ageController.removeListener(_checkForChanges);
+    _weightController.removeListener(_checkForChanges);
+    _heightController.removeListener(_checkForChanges);
+    _proteinController.removeListener(_checkForChanges);
+    _carbsController.removeListener(_checkForChanges);
+    _fatController.removeListener(_checkForChanges);
+    
+    // Dispose controllers
     _apiKeyController.dispose();
     _calorieTargetController.dispose();
     _ageController.dispose();
@@ -175,96 +247,170 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: _showUnsavedChangesDialog,
+      child: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: Theme.of(context).colorScheme.primary,
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).colorScheme.background,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(
+              Icons.arrow_back,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            onPressed: () async {
+              final canPop = await _showUnsavedChangesDialog();
+              if (canPop && mounted) {
+                Navigator.of(context).pop();
+              }
+            },
           ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-          child: Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Text(
-                    'Settings',
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onBackground,
+          title: _hasUnsavedChanges
+              ? Row(
+                  children: [
+                    Text(
+                      'Settings',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onBackground,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Customize your nutrition tracking experience',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Theme.of(context).colorScheme.onBackground.withOpacity(0.6),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Theme Settings Section
-                  _buildModernSection(
-                    title: 'Theme',
-                    icon: Icons.palette_outlined,
-                    child: _buildThemeSelector(themeProvider),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Profile Settings Section
-                  _buildModernSection(
-                    title: 'Profile',
-                    icon: Icons.person_outline,
-                    child: _buildModernProfileSection(),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Nutrition Targets Section
-                  _buildModernSection(
-                    title: 'Nutrition Targets',
-                    icon: Icons.track_changes_outlined,
-                    child: _buildMacroTargetsSection(),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // AI Settings Section
-                  _buildModernSection(
-                    title: 'AI Configuration',
-                    icon: Icons.smart_toy_outlined,
-                    child: _buildModernApiKeySection(),
-                  ),
-                  
-                  // Debug Testing Section (only in debug mode)
-                  if (kDebugMode) ...[
-                    const SizedBox(height: 24),
-                    _buildModernSection(
-                      title: 'Debug Testing',
-                      icon: Icons.bug_report_outlined,
-                      child: _buildDebugTestingSection(),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange, width: 1),
+                      ),
+                      child: const Text(
+                        'Unsaved',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
-                  
-                  const SizedBox(height: 32),
-                ],
+                )
+              : Text(
+                  'Settings',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onBackground,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+          actions: [
+            if (_hasUnsavedChanges) ...[
+              IconButton(
+                icon: _isSaving 
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.save,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                onPressed: _isSaving ? null : _saveAllSettings,
+                tooltip: 'Save All Settings',
+              ),
+            ],
+            IconButton(
+              icon: Icon(
+                Icons.home_outlined, 
+                color: Theme.of(context).colorScheme.primary, 
+                size: 28,
+              ),
+              onPressed: () async {
+                final canPop = await _showUnsavedChangesDialog();
+                if (canPop && mounted) {
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                }
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Text(
+                      'Settings',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onBackground,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Customize your nutrition tracking experience',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Theme.of(context).colorScheme.onBackground.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Theme Settings Section
+                    _buildModernSection(
+                      title: 'Theme',
+                      icon: Icons.palette_outlined,
+                      child: _buildThemeSelector(themeProvider),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Profile Settings Section
+                    _buildModernSection(
+                      title: 'Profile',
+                      icon: Icons.person_outline,
+                      child: _buildModernProfileSection(),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Nutrition Targets Section
+                    _buildModernSection(
+                      title: 'Nutrition Targets',
+                      icon: Icons.track_changes_outlined,
+                      child: _buildMacroTargetsSection(),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // AI Settings Section
+                    _buildModernSection(
+                      title: 'AI Configuration',
+                      icon: Icons.smart_toy_outlined,
+                      child: _buildModernApiKeySection(),
+                    ),
+                    
+                    // Debug Testing Section (only in debug mode)
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 24),
+                      _buildModernSection(
+                        title: 'Debug Testing',
+                        icon: Icons.bug_report_outlined,
+                        child: _buildDebugTestingSection(),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 32),
+                  ],
+                ),
               ),
             ),
           ),
@@ -614,9 +760,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _buildModernOption('Male', _selectedSex == 'Male', () => setState(() => _selectedSex = 'Male'))),
-            const SizedBox(width: 12),
-            Expanded(child: _buildModernOption('Female', _selectedSex == 'Female', () => setState(() => _selectedSex = 'Female'))),
+            Expanded(child: _buildModernOption('Male', _selectedSex == 'Male', () {
+              setState(() => _selectedSex = 'Male');
+              _checkForChanges();
+            })),
+            const SizedBox(width: 16),
+            Expanded(child: _buildModernOption('Female', _selectedSex == 'Female', () {
+              setState(() => _selectedSex = 'Female');
+              _checkForChanges();
+            })),
           ],
         ),
         const SizedBox(height: 24),
@@ -635,17 +787,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: _buildModernOption('Sedentary', _selectedActivityLevel == 'sedentary', () => setState(() => _selectedActivityLevel = 'sedentary'))),
+                Expanded(child: _buildModernOption('Sedentary', _selectedActivityLevel == 'sedentary', () {
+                  setState(() => _selectedActivityLevel = 'sedentary');
+                  _checkForChanges();
+                })),
                 const SizedBox(width: 8),
-                Expanded(child: _buildModernOption('Light', _selectedActivityLevel == 'light', () => setState(() => _selectedActivityLevel = 'light'))),
+                Expanded(child: _buildModernOption('Light', _selectedActivityLevel == 'light', () {
+                  setState(() => _selectedActivityLevel = 'light');
+                  _checkForChanges();
+                })),
               ],
             ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _buildModernOption('Moderate', _selectedActivityLevel == 'moderate', () => setState(() => _selectedActivityLevel = 'moderate'))),
+                Expanded(child: _buildModernOption('Moderate', _selectedActivityLevel == 'moderate', () {
+                  setState(() => _selectedActivityLevel = 'moderate');
+                  _checkForChanges();
+                })),
                 const SizedBox(width: 8),
-                Expanded(child: _buildModernOption('Very Active', _selectedActivityLevel == 'very_active', () => setState(() => _selectedActivityLevel = 'very_active'))),
+                Expanded(child: _buildModernOption('Very Active', _selectedActivityLevel == 'very_active', () {
+                  setState(() => _selectedActivityLevel = 'very_active');
+                  _checkForChanges();
+                })),
               ],
             ),
           ],
@@ -666,51 +830,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: _buildModernOption('Maintain', _selectedGoals == 'maintenance', () => setState(() => _selectedGoals = 'maintenance'))),
+                Expanded(child: _buildModernOption('Maintain', _selectedGoals == 'maintenance', () {
+                  setState(() => _selectedGoals = 'maintenance');
+                  _checkForChanges();
+                })),
                 const SizedBox(width: 8),
-                Expanded(child: _buildModernOption('Lose Weight', _selectedGoals == 'weight_loss', () => setState(() => _selectedGoals = 'weight_loss'))),
+                Expanded(child: _buildModernOption('Lose Weight', _selectedGoals == 'weight_loss', () {
+                  setState(() => _selectedGoals = 'weight_loss');
+                  _checkForChanges();
+                })),
               ],
             ),
             const SizedBox(width: 8),
             SizedBox(
               width: double.infinity,
-              child: _buildModernOption('Gain Weight', _selectedGoals == 'weight_gain', () => setState(() => _selectedGoals = 'weight_gain')),
+              child: _buildModernOption('Gain Weight', _selectedGoals == 'weight_gain', () {
+                setState(() => _selectedGoals = 'weight_gain');
+                _checkForChanges();
+              }),
             ),
           ],
         ),
         const SizedBox(height: 32),
-        
-        // Save Profile Button
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-            onPressed: _saveProfile,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 8,
-                  shadowColor: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                ),
-            child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                Icon(Icons.save, size: 24),
-                          const SizedBox(width: 12),
-                          Text(
-                  'Save Profile',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -976,10 +1117,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         )
                       : IconButton(
                           icon: const Icon(Icons.save),
-                          onPressed: _saveApiKey,
+                          onPressed: _saveAllSettings,
                         ),
                 ),
-                onSubmitted: (_) => _saveApiKey(),
+                onSubmitted: (_) => _saveAllSettings(),
               ),
             ],
           ),
@@ -1398,5 +1539,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
+  }
+
+  double get _calculatedCalories {
+    final protein = double.tryParse(_proteinController.text) ?? 0;
+    final carbs = double.tryParse(_carbsController.text) ?? 0;
+    final fat = double.tryParse(_fatController.text) ?? 0;
+    return (protein * 4) + (carbs * 4) + (fat * 9);
   }
 } 

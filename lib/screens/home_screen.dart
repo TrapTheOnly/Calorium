@@ -5,6 +5,7 @@ import 'daily_log_screen.dart';
 import 'date_picker_screen.dart';
 import 'inventory_screen.dart';
 import 'ai_quick_add_screen.dart';
+import 'ai_meal_planner_screen.dart';
 import 'settings_screen.dart';
 import 'weekly_analysis_screen.dart';
 
@@ -191,12 +192,26 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
               
               _buildActionButton(
-                'AI Quick Add (Today)',
+                'AI Quick Scan',
                 () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => AiQuickAddScreen(date: todayDate),
+                    ),
+                  ).then((_) => _loadTodayCalories());
+                },
+              ),
+              
+              const SizedBox(height: 20),
+              
+              _buildActionButton(
+                'AI Recipe Generator',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AiMealPlannerScreen(),
                     ),
                   ).then((_) => _loadTodayCalories());
                 },
