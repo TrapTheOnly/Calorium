@@ -26,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _selectedSex;
   String _selectedActivityLevel = 'moderate';
   String _selectedGoals = 'maintenance';
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isSaving = false;
   bool _isInitialized = false;
   
@@ -841,7 +841,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 })),
               ],
             ),
-            const SizedBox(width: 8),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: _buildModernOption('Gain Weight', _selectedGoals == 'weight_gain', () {

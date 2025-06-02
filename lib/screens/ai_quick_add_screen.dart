@@ -7,6 +7,7 @@ import '../services/log_service.dart';
 import '../services/food_service.dart';
 import '../models/food.dart';
 import '../models/log_entry.dart';
+import '../widgets/custom_alert.dart';
 import 'settings_screen.dart';
 
 class AiQuickAddScreen extends StatefulWidget {
@@ -89,9 +90,13 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
         _analyzeImage();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error taking photo: $e')),
-      );
+      if (mounted) {
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Camera Error',
+          message: 'Failed to take photo: $e',
+        );
+      }
     }
   }
 
@@ -113,9 +118,13 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
         _analyzeImage();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error picking image: $e')),
-      );
+      if (mounted) {
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Gallery Error',
+          message: 'Failed to pick image: $e',
+        );
+      }
     }
   }
 
@@ -137,11 +146,10 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error analyzing image: $e'),
-            backgroundColor: Colors.red,
-          ),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Analysis Failed',
+          message: 'Failed to analyze image. Please check your API key and try again.\n\nError: $e',
         );
       }
     } finally {
@@ -158,8 +166,10 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
 
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid amount')),
+      AlertHelper.showErrorAlert(
+        context,
+        title: 'Invalid Amount',
+        message: 'Please enter a valid amount greater than 0.',
       );
       return;
     }
@@ -189,21 +199,23 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Added to today\'s log!'),
-            backgroundColor: Colors.green,
-          ),
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'Added to Log!',
+          message: '${_nutritionData!['name']} has been successfully added to today\'s nutrition log.',
+          actionButtonText: 'View Today',
+          onActionPressed: () {
+            Navigator.of(context).pop(); // Close the alert
+            Navigator.pop(context, true); // Go back to previous screen
+          },
         );
-        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding to log: $e'),
-            backgroundColor: Colors.red,
-          ),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Error Adding to Log',
+          message: 'Failed to add food to log: $e',
         );
       }
     }
@@ -243,7 +255,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AI Quick Add',
+                'AI Quick Scan',
                 style: TextStyle(
                   fontSize: 34,
                   fontWeight: FontWeight.bold,

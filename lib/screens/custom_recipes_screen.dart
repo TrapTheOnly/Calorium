@@ -316,7 +316,7 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
                   const SizedBox(width: 8),
                   _buildInfoChip(
                     Icons.signal_cellular_alt,
-                    recipe.difficulty,
+                    _capitalizeFirst(recipe.difficulty),
                     color: _getDifficultyColor(recipe.difficulty),
                   ),
                   const Spacer(),
@@ -393,6 +393,11 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
         ],
       ),
     );
+  }
+
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
 
   Color _getDifficultyColor(String difficulty) {

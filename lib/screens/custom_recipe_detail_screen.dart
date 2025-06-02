@@ -18,18 +18,23 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   late CustomRecipe _recipe;
   final LogService _logService = LogService();
   final TextEditingController _servingsController = TextEditingController();
+  final TextEditingController _newTagController = TextEditingController();
   bool _isLogging = false;
+  bool _isEditingDifficulty = false;
+  String _tempDifficulty = '';
 
   @override
   void initState() {
     super.initState();
     _recipe = widget.recipe;
     _servingsController.text = '1';
+    _tempDifficulty = _recipe.difficulty;
   }
 
   @override
   void dispose() {
     _servingsController.dispose();
+    _newTagController.dispose();
     super.dispose();
   }
 
@@ -87,10 +92,8 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             _buildIngredientsSection(),
             const SizedBox(height: 24),
             _buildInstructionsSection(),
-            if (_recipe.tags.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              _buildTagsSection(),
-            ],
+            const SizedBox(height: 24),
+            _buildTagsSection(),
             const SizedBox(height: 24),
             _buildLogToJournalSection(),
             const SizedBox(height: 32),
@@ -152,10 +155,14 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildInfoChip(
-                  Icons.signal_cellular_alt,
-                  _recipe.difficulty.toUpperCase(),
-                  color: _getDifficultyColor(_recipe.difficulty),
+                GestureDetector(
+                  onTap: () => _showDifficultyEditor(),
+                  child: _buildInfoChip(
+                    Icons.signal_cellular_alt,
+                    _capitalizeFirst(_recipe.difficulty),
+                    color: _getDifficultyColor(_recipe.difficulty),
+                    isEditable: true,
+                  ),
                 ),
                 _buildInfoChip(Icons.access_time, 'Total: ${_recipe.totalTimeMinutes}m'),
               ],
@@ -167,6 +174,12 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   }
 
   Widget _buildNutritionCard() {
+    // Calculate per serving nutrition (recipe stores total nutrition)
+    final caloriesPerServing = _recipe.calories / _recipe.servings;
+    final proteinPerServing = _recipe.protein / _recipe.servings;
+    final carbsPerServing = _recipe.carbs / _recipe.servings;
+    final fatPerServing = _recipe.fat / _recipe.servings;
+    
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -194,6 +207,17 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            
+            // Total Recipe Nutrition
+            Text(
+              'Total Recipe (${_recipe.servings} servings)',
+              style: TextStyle(
+                fontSize: 14, 
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -203,17 +227,28 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                 _buildNutritionItem('Fat', '${_recipe.fat.round()}g'),
               ],
             ),
+            
             const SizedBox(height: 12),
             Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+            const SizedBox(height: 12),
+            
+            // Per Serving Nutrition
+            Text(
+              'Per Serving',
+              style: TextStyle(
+                fontSize: 14, 
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNutritionItem('Per Serving', ''),
-                _buildNutritionItem('Cal', '${(_recipe.calories / _recipe.servings).round()}'),
-                _buildNutritionItem('P', '${(_recipe.protein / _recipe.servings).round()}g'),
-                _buildNutritionItem('C', '${(_recipe.carbs / _recipe.servings).round()}g'),
-                _buildNutritionItem('F', '${(_recipe.fat / _recipe.servings).round()}g'),
+                _buildNutritionItem('Calories', '${caloriesPerServing.round()}'),
+                _buildNutritionItem('Protein', '${proteinPerServing.round()}g'),
+                _buildNutritionItem('Carbs', '${carbsPerServing.round()}g'),
+                _buildNutritionItem('Fat', '${fatPerServing.round()}g'),
               ],
             ),
           ],
@@ -255,6 +290,11 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _recipe.ingredients.length,
               itemBuilder: (context, index) {
+                String ingredient = _recipe.ingredients[index];
+                
+                // Clean up ingredient text - remove empty parentheses
+                ingredient = ingredient.replaceAll(RegExp(r'\(\s*\)'), '').trim();
+                
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -282,7 +322,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _recipe.ingredients[index],
+                          ingredient,
                           style: TextStyle(
                             fontSize: 16,
                             color: Theme.of(context).colorScheme.onSurface,
@@ -333,34 +373,42 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _recipe.instructions.length,
               itemBuilder: (context, index) {
+                String instruction = _recipe.instructions[index];
+                
+                // Check if instruction already starts with a number (from AI)
+                bool hasNumberPrefix = RegExp(r'^\d+\.?\s').hasMatch(instruction.trim());
+                
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        margin: const EdgeInsets.only(top: 2),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                      // Only show number circle if instruction doesn't already have a number
+                      if (!hasNumberPrefix) ...[
+                        Container(
+                          width: 28,
+                          height: 28,
+                          margin: const EdgeInsets.only(top: 2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                      ],
                       Expanded(
                         child: Text(
-                          _recipe.instructions[index],
+                          instruction,
                           style: TextStyle(
                             fontSize: 16,
                             color: Theme.of(context).colorScheme.onSurface,
@@ -397,36 +445,80 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tags',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _showAddTagDialog,
+                  icon: Icon(
+                    Icons.add,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  tooltip: 'Add Tag',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             Text(
-              'Tags',
+              'Tags help organize and filter your recipes. Popular tags: breakfast, lunch, dinner',
               style: TextStyle(
-                fontSize: 18, 
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
               ),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _recipe.tags.map((tag) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    tag,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w500,
+            if (_recipe.tags.isEmpty)
+              Text(
+                'No tags added yet. Tap + to add tags for easier recipe organization.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _recipe.tags.map((tag) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          tag,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => _removeTag(tag),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
           ],
         ),
       ),
@@ -524,7 +616,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String text, {Color? color}) {
+  Widget _buildInfoChip(IconData icon, String text, {Color? color, bool isEditable = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -575,6 +667,11 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         ),
       ],
     );
+  }
+
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
 
   Color _getDifficultyColor(String difficulty) {
@@ -712,6 +809,166 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
       }
     } catch (e) {
       _showErrorSnackBar('Failed to delete recipe: $e');
+    }
+  }
+
+  void _showDifficultyEditor() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Difficulty'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Select recipe difficulty:'),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _tempDifficulty,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: ['easy', 'medium', 'hard'].map((difficulty) {
+                return DropdownMenuItem(
+                  value: difficulty,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: _getDifficultyColor(difficulty),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(_capitalizeFirst(difficulty)),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _tempDifficulty = value;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                final updatedRecipe = _recipe.copyWith(difficulty: _tempDifficulty);
+                await CustomRecipeService.updateCustomRecipe(updatedRecipe);
+                setState(() {
+                  _recipe = updatedRecipe;
+                });
+                Navigator.of(context).pop();
+                AlertHelper.showSuccessAlert(
+                  context,
+                  title: 'Difficulty Updated',
+                  message: 'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
+                );
+              } catch (e) {
+                Navigator.of(context).pop();
+                _showErrorSnackBar('Failed to update difficulty: $e');
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddTagDialog() {
+    _newTagController.clear();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Tag'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _newTagController,
+              decoration: const InputDecoration(
+                labelText: 'Enter new tag',
+                hintText: 'e.g., breakfast, vegetarian, quick',
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Popular tags: breakfast, lunch, dinner',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: _addTag,
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addTag() async {
+    final newTag = _newTagController.text.trim().toLowerCase();
+    if (newTag.isNotEmpty && !_recipe.tags.contains(newTag)) {
+      try {
+        final updatedRecipe = _recipe.copyWith(tags: [..._recipe.tags, newTag]);
+        await CustomRecipeService.updateCustomRecipe(updatedRecipe);
+        setState(() {
+          _recipe = updatedRecipe;
+        });
+        _newTagController.clear();
+        Navigator.of(context).pop();
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'Tag Added',
+          message: 'Tag "$newTag" has been added to the recipe.',
+        );
+      } catch (e) {
+        Navigator.of(context).pop();
+        _showErrorSnackBar('Failed to add tag: $e');
+      }
+    } else if (_recipe.tags.contains(newTag)) {
+      AlertHelper.showErrorAlert(
+        context,
+        title: 'Duplicate Tag',
+        message: 'This tag already exists for this recipe.',
+      );
+    }
+  }
+
+  void _removeTag(String tag) async {
+    try {
+      final updatedRecipe = _recipe.copyWith(tags: _recipe.tags.where((t) => t != tag).toList());
+      await CustomRecipeService.updateCustomRecipe(updatedRecipe);
+      setState(() {
+        _recipe = updatedRecipe;
+      });
+      AlertHelper.showSuccessAlert(
+        context,
+        title: 'Tag Removed',
+        message: 'Tag "$tag" has been removed from the recipe.',
+      );
+    } catch (e) {
+      _showErrorSnackBar('Failed to remove tag: $e');
     }
   }
 }

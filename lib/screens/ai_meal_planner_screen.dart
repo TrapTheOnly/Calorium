@@ -53,7 +53,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'AI Meal Planner',
+          'AI Recipe Generator',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onBackground,
             fontWeight: FontWeight.bold,
@@ -89,57 +89,50 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     return Container(
       padding: const EdgeInsets.all(16.0),
       child: Row(
-        children: List.generate(_steps.length, (index) {
-          final isCompleted = index < _currentStep;
-          final isCurrent = index == _currentStep;
-          
-          return Expanded(
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isCompleted 
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (int index = 0; index < _steps.length; index++) ...[
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: index < _currentStep
+                    ? Theme.of(context).colorScheme.primary
+                    : index == _currentStep
                         ? Theme.of(context).colorScheme.primary
-                        : isCurrent 
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                  ),
-                  child: Center(
-                    child: isCompleted
-                        ? Icon(
-                            Icons.check, 
-                            color: Theme.of(context).colorScheme.onPrimary, 
-                            size: 16,
-                          )
-                        : Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              color: isCurrent 
-                                  ? Theme.of(context).colorScheme.onPrimary 
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                  ),
-                ),
-                if (index < _steps.length - 1)
-                  Expanded(
-                    child: Container(
-                      height: 2,
-                      color: isCompleted 
-                          ? Theme.of(context).colorScheme.primary 
-                          : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                    ),
-                  ),
-              ],
+                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+              ),
+              child: Center(
+                child: index < _currentStep
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        size: 16,
+                      )
+                    : Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          color: index == _currentStep
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+              ),
             ),
-          );
-        }),
+            if (index < _steps.length - 1)
+              Container(
+                width: 40,
+                height: 2,
+                color: index < _currentStep
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -276,7 +269,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
         // Category color legend
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
             borderRadius: BorderRadius.circular(8),
@@ -288,29 +281,37 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                 child: Text(
                   'Category Colors:',
                   style: TextStyle(
-                    fontSize: 12, 
+                    fontSize: 14, 
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              // Properly distribute legend items across the width
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              const SizedBox(height: 12),
+              // Table layout for better alignment
+              Table(
                 children: [
-                  Expanded(child: _buildCategoryLegend('P', 'Produce', Colors.green)),
-                  Expanded(child: _buildCategoryLegend('M', 'Protein', Colors.red)),
-                  Expanded(child: _buildCategoryLegend('G', 'Grain', Colors.orange)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Expanded(child: _buildCategoryLegend('D', 'Dairy', Colors.blue)),
-                  Expanded(child: _buildCategoryLegend('P', 'Pantry', Colors.purple)),
-                  Expanded(child: _buildCategoryLegend('S', 'Spice', Colors.brown)),
+                  TableRow(
+                    children: [
+                      _buildCategoryLegend('P', 'Produce', Colors.green),
+                      _buildCategoryLegend('M', 'Protein', Colors.red),
+                      _buildCategoryLegend('G', 'Grain', Colors.orange),
+                    ],
+                  ),
+                  const TableRow(
+                    children: [
+                      SizedBox(height: 8),
+                      SizedBox(height: 8),
+                      SizedBox(height: 8),
+                    ],
+                  ),
+                  TableRow(
+                    children: [
+                      _buildCategoryLegend('D', 'Dairy', Colors.blue),
+                      _buildCategoryLegend('P', 'Pantry', Colors.purple),
+                      _buildCategoryLegend('S', 'Spice', Colors.brown),
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -410,14 +411,13 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
 
   Widget _buildCategoryLegend(String letter, String category, Color color) {
     return Container(
-      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 16,
-            height: 16,
+            width: 18,
+            height: 18,
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
@@ -427,22 +427,22 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                 letter,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 4),
-          Flexible(
+          const SizedBox(width: 6),
+          Expanded(
             child: Text(
               category,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
               ),
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.left,
             ),
           ),
         ],
@@ -477,6 +477,16 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
               onPressed: _canProceedToGeneration() 
                   ? () => setState(() => _currentStep = 2)
                   : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                disabledBackgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                disabledForegroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               child: const Text('Generate My Meal'),
             ),
           ),
@@ -494,6 +504,8 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
       'dietaryRestrictions': 'Dietary restrictions?',
     };
 
+    List<String> filteredOptions = options;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
@@ -507,12 +519,18 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             ),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: options.map((option) {
+              spacing: 6,
+              runSpacing: 6,
+              children: filteredOptions.map((option) {
                 final isSelected = _userPreferences[questionKey] == option;
                 return FilterChip(
-                  label: Text(option),
+                  label: Text(
+                    option,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
                   selected: isSelected,
                   onSelected: (selected) {
                     setState(() {
@@ -523,6 +541,16 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                       }
                     });
                   },
+                  selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                  checkmarkColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                  side: BorderSide(
+                    color: isSelected 
+                        ? Theme.of(context).colorScheme.primary 
+                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                    width: 1,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 );
               }).toList(),
             ),
@@ -543,14 +571,14 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Creating your perfect meal...',
+              'Creating your perfect meal',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onBackground,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Our AI is analyzing your ingredients, preferences, and nutritional needs',
+              'Our AI is analyzing: your ingredients, preferences and much more...',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -586,20 +614,36 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            recipe['recipeName'],
-            style: TextStyle(
-              fontSize: 24, 
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onBackground,
+          // Recipe title with better text wrapping
+          Container(
+            width: double.infinity,
+            child: Text(
+              recipe['recipeName'],
+              style: TextStyle(
+                fontSize: 24, 
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onBackground,
+                height: 1.2,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            recipe['description'],
-            style: TextStyle(
-              fontSize: 16, 
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          const SizedBox(height: 12),
+          // Description with better text wrapping
+          Container(
+            width: double.infinity,
+            child: Text(
+              recipe['description'],
+              style: TextStyle(
+                fontSize: 14, 
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(height: 16),
@@ -613,7 +657,11 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                 const SizedBox(width: 8),
                 _buildInfoChip(Icons.restaurant, '${recipe['servings']} servings'),
                 const SizedBox(width: 8),
-                _buildInfoChip(Icons.signal_cellular_alt, recipe['difficulty']),
+                _buildInfoChip(
+                  Icons.signal_cellular_alt, 
+                  _capitalizeFirst(recipe['difficulty'].toString()),
+                  color: _getDifficultyColor(recipe['difficulty'].toString()),
+                ),
               ],
             ),
           ),
@@ -663,7 +711,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
           
           const SizedBox(height: 16),
           
-          // Why this recipe explanation
+          // Why this recipe explanation with better text wrapping
           if (recipe['whyThisRecipe'] != null) ...[
             Container(
               width: double.infinity,
@@ -686,11 +734,13 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Why This Recipe?', 
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
+                        Expanded(
+                          child: Text(
+                            'Why This Recipe?', 
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                         ),
                       ],
@@ -700,7 +750,10 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                       recipe['whyThisRecipe'],
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurface,
+                        height: 1.4,
                       ),
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -871,14 +924,14 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String text) {
+  Widget _buildInfoChip(IconData icon, String text, {Color? color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+        color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.3),
         ),
       ),
       child: Row(
@@ -887,13 +940,14 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
           Icon(
             icon, 
             size: 16, 
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 4),
           Text(
             text, 
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: color != null ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
         ],
@@ -981,7 +1035,25 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
       });
     } catch (e) {
       setState(() => _isGenerating = false);
-      _showErrorSnackBar('Failed to generate meal recommendation: $e');
+      
+      // Show user-friendly error and return to start
+      AlertHelper.showInfoAlert(
+        context,
+        title: 'Recipe Generation Failed',
+        message: 'This recipe cannot be created with the chosen settings and given ingredients. Please try different ingredients or preferences.',
+        actionButtonText: 'Start Over',
+        onActionPressed: () {
+          Navigator.of(context).pop(); // Close the alert
+          setState(() {
+            _scannedImage = null;
+            _scannedIngredients = null;
+            _userPreferences.clear();
+            _mealRecommendation = null;
+            _generatedRecipe = null;
+            _currentStep = 0;
+          });
+        },
+      );
     }
   }
 
@@ -1060,5 +1132,23 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
       title: 'Error',
       message: message,
     );
+  }
+
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1).toLowerCase();
+  }
+
+  Color _getDifficultyColor(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return Colors.green;
+      case 'medium':
+        return Colors.orange;
+      case 'hard':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 }

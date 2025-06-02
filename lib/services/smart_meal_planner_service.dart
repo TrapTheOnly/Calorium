@@ -1,4 +1,4 @@
- import 'dart:convert';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'settings_service.dart';
 import 'log_service.dart';
@@ -261,8 +261,7 @@ GUIDELINES:
         'Gluten-free',
         'Dairy-free',
         'Low-carb/Keto',
-        'Paleo',
-        'Other (specify)'
+        'Paleo'
       ]
     };
   }

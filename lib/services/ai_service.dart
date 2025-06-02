@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'settings_service.dart';
 
 class AiService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
   
   static Future<Map<String, dynamic>?> analyzeFood(File imageFile) async {
     try {
@@ -83,7 +83,7 @@ If you see pasta on a dinner plate that covers about half the plate (13cm diamet
           "temperature": 0.1,
           "topK": 1,
           "topP": 1,
-          "maxOutputTokens": 256
+          "maxOutputTokens": 512
         }
       };
       
@@ -96,43 +96,103 @@ If you see pasta on a dinner plate that covers about half the plate (13cm diamet
         body: json.encode(requestBody),
       );
       
+      print('AI Food Analysis Response Status: ${response.statusCode}');
+      print('AI Food Analysis Response Body: ${response.body}');
+      
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
         
-        if (text != null) {
-          // Parse the JSON response from Gemini
-          try {
-            // Clean the response by removing markdown code block formatting
-            String cleanedText = text.trim();
-            
-            // Remove markdown code block markers if present
-            if (cleanedText.startsWith('```json')) {
-              cleanedText = cleanedText.substring(7); // Remove '```json'
-            } else if (cleanedText.startsWith('```')) {
-              cleanedText = cleanedText.substring(3); // Remove '```'
-            }
-            
-            if (cleanedText.endsWith('```')) {
-              cleanedText = cleanedText.substring(0, cleanedText.length - 3); // Remove ending '```'
-            }
-            
-            cleanedText = cleanedText.trim();
-            
-            final nutritionData = json.decode(cleanedText);
-            return nutritionData;
-          } catch (e) {
-            print('Error parsing AI response: $e');
-            print('AI Response: $text');
-            throw Exception('Invalid response format from AI');
+        // Improved error handling and type safety
+        if (data == null || data is! Map<String, dynamic>) {
+          throw Exception('Invalid response structure from API');
+        }
+        
+        final candidates = data['candidates'];
+        if (candidates == null || candidates is! List || candidates.isEmpty) {
+          throw Exception('No candidates in API response');
+        }
+        
+        final firstCandidate = candidates[0];
+        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
+          throw Exception('Invalid candidate structure');
+        }
+        
+        final content = firstCandidate['content'];
+        if (content == null || content is! Map<String, dynamic>) {
+          throw Exception('No content in candidate');
+        }
+        
+        final parts = content['parts'];
+        if (parts == null || parts is! List || parts.isEmpty) {
+          throw Exception('No parts in content');
+        }
+        
+        final firstPart = parts[0];
+        if (firstPart == null || firstPart is! Map<String, dynamic>) {
+          throw Exception('Invalid part structure');
+        }
+        
+        final text = firstPart['text'];
+        if (text == null || text is! String) {
+          throw Exception('No text in response part');
+        }
+        
+        // Parse the JSON response from Gemini
+        try {
+          // Clean the response by removing markdown code block formatting
+          String cleanedText = text.trim();
+          
+          // Remove markdown code block markers if present
+          if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.substring(7); // Remove '```json'
+          } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.substring(3); // Remove '```'
           }
-        } else {
-          throw Exception('No response from AI');
+          
+          if (cleanedText.endsWith('```')) {
+            cleanedText = cleanedText.substring(0, cleanedText.length - 3); // Remove ending '```'
+          }
+          
+          cleanedText = cleanedText.trim();
+          
+          print('Cleaned AI Food Response: $cleanedText');
+          
+          final nutritionData = json.decode(cleanedText);
+          
+          // Validate the nutrition data structure
+          if (nutritionData is! Map<String, dynamic>) {
+            throw Exception('Nutrition data is not a valid object');
+          }
+          
+          // Ensure required fields exist
+          final requiredFields = ['name', 'calories', 'protein', 'carbs', 'fat', 'defaultPortionSize', 'portionDescription'];
+          for (String field in requiredFields) {
+            if (!nutritionData.containsKey(field)) {
+              throw Exception('Missing required field: $field');
+            }
+          }
+          
+          print('Successfully parsed nutrition data: $nutritionData');
+          return nutritionData;
+        } catch (e) {
+          print('Error parsing AI food response: $e');
+          print('AI Response Text: $text');
+          throw Exception('Invalid response format from AI: $e');
         }
       } else {
-        final errorData = json.decode(response.body);
-        final errorMessage = errorData['error']?['message'] ?? 'Unknown error';
-        throw Exception('API Error: $errorMessage');
+        String errorMessage = 'Unknown error';
+        try {
+          final errorData = json.decode(response.body);
+          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+            final error = errorData['error'];
+            if (error is Map<String, dynamic> && error.containsKey('message')) {
+              errorMessage = error['message'].toString();
+            }
+          }
+        } catch (e) {
+          errorMessage = 'Failed to parse error response: ${response.body}';
+        }
+        throw Exception('API Error (${response.statusCode}): $errorMessage');
       }
     } catch (e) {
       print('AI Service Error: $e');
@@ -284,73 +344,113 @@ Ensure your activity level interpretation matches "$activityDescription" exactly
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
         
-        if (text != null) {
-          print('AI macro response text: $text');
+        // Improved error handling and type safety for macro calculation
+        if (data == null || data is! Map<String, dynamic>) {
+          throw Exception('Invalid response structure from API');
+        }
+        
+        final candidates = data['candidates'];
+        if (candidates == null || candidates is! List || candidates.isEmpty) {
+          throw Exception('No candidates in API response');
+        }
+        
+        final firstCandidate = candidates[0];
+        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
+          throw Exception('Invalid candidate structure');
+        }
+        
+        final content = firstCandidate['content'];
+        if (content == null || content is! Map<String, dynamic>) {
+          throw Exception('No content in candidate');
+        }
+        
+        final parts = content['parts'];
+        if (parts == null || parts is! List || parts.isEmpty) {
+          throw Exception('No parts in content');
+        }
+        
+        final firstPart = parts[0];
+        if (firstPart == null || firstPart is! Map<String, dynamic>) {
+          throw Exception('Invalid part structure');
+        }
+        
+        final text = firstPart['text'];
+        if (text == null || text is! String) {
+          throw Exception('No text in response part');
+        }
+        
+        print('AI macro response text: $text');
+        
+        // Parse the JSON response from Gemini
+        try {
+          // Clean the response by removing markdown code block formatting
+          String cleanedText = text.trim();
           
-          // Parse the JSON response from Gemini
-          try {
-            // Clean the response by removing markdown code block formatting
-            String cleanedText = text.trim();
-            
-            // Remove markdown code block markers if present
-            if (cleanedText.startsWith('```json')) {
-              cleanedText = cleanedText.substring(7);
-            } else if (cleanedText.startsWith('```')) {
-              cleanedText = cleanedText.substring(3);
-            }
-            
-            if (cleanedText.endsWith('```')) {
-              cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-            }
-            
-            cleanedText = cleanedText.trim();
-            print('Cleaned AI macro response: $cleanedText');
-            
-            final macroData = json.decode(cleanedText);
-            print('Parsed macro data: $macroData');
-            
-            // Validate the response structure
-            if (macroData is Map<String, dynamic> &&
-                macroData.containsKey('calories') &&
-                macroData.containsKey('protein') &&
-                macroData.containsKey('carbs') &&
-                macroData.containsKey('fat')) {
-              
-              // Ensure the calculated calories match the target within a small tolerance
-              final protein = (macroData['protein'] as num).toDouble();
-              final carbs = (macroData['carbs'] as num).toDouble();
-              final fat = (macroData['fat'] as num).toDouble();
-              final calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
-              
-              print('AI provided macros: P:$protein C:$carbs F:$fat');
-              print('Calculated calories: $calculatedCalories, Target: $calorieTarget');
-              
-              // Allow small rounding tolerance (within 5 calories)
-              if ((calculatedCalories - calorieTarget).abs() <= 5.0) {
-                return macroData;
-              } else {
-                print('WARNING: AI macro calculations do not match calorie target');
-                // Still return the data but log the discrepancy
-                return macroData;
-              }
-            } else {
-              throw Exception('Invalid response structure from AI');
-            }
-          } catch (e) {
-            print('Error parsing AI macro response: $e');
-            print('AI Response: $text');
-            throw Exception('Invalid response format from AI: $e');
+          // Remove markdown code block markers if present
+          if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.substring(7);
+          } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.substring(3);
           }
-        } else {
-          throw Exception('No response text from AI');
+          
+          if (cleanedText.endsWith('```')) {
+            cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+          }
+          
+          cleanedText = cleanedText.trim();
+          print('Cleaned AI macro response: $cleanedText');
+          
+          final macroData = json.decode(cleanedText);
+          print('Parsed macro data: $macroData');
+          
+          // Validate the response structure
+          if (macroData is Map<String, dynamic> &&
+              macroData.containsKey('calories') &&
+              macroData.containsKey('protein') &&
+              macroData.containsKey('carbs') &&
+              macroData.containsKey('fat')) {
+            
+            // Ensure the calculated calories match the target within a small tolerance
+            final protein = (macroData['protein'] as num).toDouble();
+            final carbs = (macroData['carbs'] as num).toDouble();
+            final fat = (macroData['fat'] as num).toDouble();
+            final calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
+            
+            print('AI provided macros: P:$protein C:$carbs F:$fat');
+            print('Calculated calories: $calculatedCalories, Target: $calorieTarget');
+            
+            // Allow small rounding tolerance (within 5 calories)
+            if ((calculatedCalories - calorieTarget).abs() <= 5.0) {
+              return macroData;
+            } else {
+              print('WARNING: AI macro calculations do not match calorie target');
+              // Still return the data but log the discrepancy
+              return macroData;
+            }
+          } else {
+            throw Exception('Invalid response structure from AI');
+          }
+        } catch (e) {
+          print('Error parsing AI macro response: $e');
+          print('AI Response: $text');
+          throw Exception('Invalid response format from AI: $e');
         }
       } else {
-        final errorData = json.decode(response.body);
-        final errorMessage = errorData['error']?['message'] ?? 'Unknown error';
+        String errorMessage = 'Unknown error';
+        try {
+          final errorData = json.decode(response.body);
+          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+            final error = errorData['error'];
+            if (error is Map<String, dynamic> && error.containsKey('message')) {
+              errorMessage = error['message'].toString();
+            }
+          }
+        } catch (e) {
+          errorMessage = 'Failed to parse error response: ${response.body}';
+        }
         print('AI API Error: $errorMessage');
-        throw Exception('API Error: $errorMessage');
+        throw Exception('API Error (${response.statusCode}): $errorMessage');
       }
     } catch (e) {
       print('AI Macro Service Error: $e');
