@@ -5,8 +5,12 @@ import 'package:openfoodfacts/openfoodfacts.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'screens/home_screen.dart';
 import 'utils/theme_provider.dart';
+import 'services/scheduler_service.dart';
 
-void main() {
+// Import debug service for easy access during development
+import 'services/debug_service.dart' as debug;
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   SystemChrome.setPreferredOrientations([
@@ -21,6 +25,10 @@ void main() {
   OpenFoodAPIConfiguration.globalLanguages = [OpenFoodFactsLanguage.ENGLISH];
   OpenFoodAPIConfiguration.globalCountry = OpenFoodFactsCountry.USA;
   OpenFoodAPIConfiguration.globalUser = User(userId: 'calorie_tracker_app', password: 'nx9*HCx8RJ3YP&WH');
+
+  // Initialize scheduler service for AI nutrition analysis
+  await SchedulerService.initialize();
+  await SchedulerService.setupScheduledNotifications();
 
   runApp(
     ChangeNotifierProvider(

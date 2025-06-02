@@ -17,8 +17,6 @@ class NutritionSummaryCard extends StatefulWidget {
 }
 
 class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
-  late Map<String, double> _nutritionData;
-  late VoidCallback? _onSetTargetsTap;
   double _dailyCalorieTarget = 0;
   double _dailyProteinTarget = 0;
   double _dailyFatTarget = 0;
@@ -28,9 +26,16 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
   @override
   void initState() {
     super.initState();
-    _nutritionData = widget.nutritionData;
-    _onSetTargetsTap = widget.onSetTargetsTap;
     _loadTargets();
+  }
+
+  @override
+  void didUpdateWidget(NutritionSummaryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload targets when nutrition data changes to ensure consistency
+    if (oldWidget.nutritionData != widget.nutritionData) {
+      _loadTargets();
+    }
   }
 
   Future<void> _loadTargets() async {
@@ -53,11 +58,22 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Container(
-          height: 150,
-          child: const Center(child: CircularProgressIndicator()),
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 0),
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              width: 1,
+            ),
+          ),
+          child: Container(
+            height: 150,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
         ),
       );
     }
@@ -67,120 +83,150 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                       _dailyFatTarget > 0 && 
                       _dailyCarbTarget > 0;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.analytics_outlined,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Today\'s Progress',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const Spacer(),
-                if (!_isLoading && !hasTargets)
-                  TextButton(
-                    onPressed: _onSetTargetsTap,
-                    child: Text(
-                      'Set Targets',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 0),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.analytics_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (hasTargets) ...[
-              _buildNutrientBar(
-                context,
-                'Calories',
-                _nutritionData['cal'] ?? 0,
-                _dailyCalorieTarget,
-                'kcal',
-                Icons.local_fire_department,
-                Colors.orange,
-              ),
-              const SizedBox(height: 12),
-              _buildNutrientBar(
-                context,
-                'Protein',
-                _nutritionData['prot'] ?? 0,
-                _dailyProteinTarget,
-                'g',
-                Icons.fitness_center,
-                Colors.red,
-              ),
-              const SizedBox(height: 12),
-              _buildNutrientBar(
-                context,
-                'Carbs',
-                _nutritionData['carb'] ?? 0,
-                _dailyCarbTarget,
-                'g',
-                Icons.grain,
-                Colors.amber,
-              ),
-              const SizedBox(height: 12),
-              _buildNutrientBar(
-                context,
-                'Fat',
-                _nutritionData['fat'] ?? 0,
-                _dailyFatTarget,
-                'g',
-                Icons.opacity,
-                Colors.purple,
-              ),
-            ] else ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildNutrientItem(
-                    context,
-                    'Calories',
-                    '${_nutritionData['cal']?.toStringAsFixed(0) ?? '0'} kcal',
-                    Icons.local_fire_department,
-                    Colors.orange,
+                  const SizedBox(width: 12),
+                  Text(
+                    'Today\'s Progress',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                  _buildNutrientItem(
-                    context,
-                    'Protein',
-                    '${_nutritionData['prot']?.toStringAsFixed(1) ?? '0'}g',
-                    Icons.fitness_center,
-                    Colors.red,
-                  ),
-                  _buildNutrientItem(
-                    context,
-                    'Carbs',
-                    '${_nutritionData['carb']?.toStringAsFixed(1) ?? '0'}g',
-                    Icons.grain,
-                    Colors.amber,
-                  ),
-                  _buildNutrientItem(
-                    context,
-                    'Fat',
-                    '${_nutritionData['fat']?.toStringAsFixed(1) ?? '0'}g',
-                    Icons.opacity,
-                    Colors.purple,
-                  ),
+                  const Spacer(),
+                  if (!hasTargets)
+                    TextButton(
+                      onPressed: widget.onSetTargetsTap,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      child: Text(
+                        'Set Targets',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                 ],
               ),
+              const SizedBox(height: 20),
+              if (hasTargets) ...[
+                _buildNutrientBar(
+                  context,
+                  'Calories',
+                  widget.nutritionData['cal'] ?? 0,
+                  _dailyCalorieTarget,
+                  'kcal',
+                  Icons.local_fire_department,
+                  Colors.orange,
+                ),
+                const SizedBox(height: 16),
+                _buildNutrientBar(
+                  context,
+                  'Protein',
+                  widget.nutritionData['prot'] ?? 0,
+                  _dailyProteinTarget,
+                  'g',
+                  Icons.fitness_center,
+                  Colors.red,
+                ),
+                const SizedBox(height: 16),
+                _buildNutrientBar(
+                  context,
+                  'Carbs',
+                  widget.nutritionData['carb'] ?? 0,
+                  _dailyCarbTarget,
+                  'g',
+                  Icons.grain,
+                  Colors.amber,
+                ),
+                const SizedBox(height: 16),
+                _buildNutrientBar(
+                  context,
+                  'Fat',
+                  widget.nutritionData['fat'] ?? 0,
+                  _dailyFatTarget,
+                  'g',
+                  Icons.opacity,
+                  Colors.purple,
+                ),
+              ] else ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildNutrientItem(
+                      context,
+                      'Calories',
+                      '${widget.nutritionData['cal']?.toStringAsFixed(0) ?? '0'}',
+                      'kcal',
+                      Icons.local_fire_department,
+                      Colors.orange,
+                    ),
+                    _buildNutrientItem(
+                      context,
+                      'Protein',
+                      '${widget.nutritionData['prot']?.toStringAsFixed(1) ?? '0.0'}',
+                      'g',
+                      Icons.fitness_center,
+                      Colors.red,
+                    ),
+                    _buildNutrientItem(
+                      context,
+                      'Carbs',
+                      '${widget.nutritionData['carb']?.toStringAsFixed(1) ?? '0.0'}',
+                      'g',
+                      Icons.grain,
+                      Colors.amber,
+                    ),
+                    _buildNutrientItem(
+                      context,
+                      'Fat',
+                      '${widget.nutritionData['fat']?.toStringAsFixed(1) ?? '0.0'}',
+                      'g',
+                      Icons.opacity,
+                      Colors.purple,
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -195,8 +241,9 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
     IconData icon,
     Color color,
   ) {
-    final progress = (current / target).clamp(0.0, 1.0);
-    final percentage = (progress * 100).round();
+    final progress = target > 0 ? (current / target).clamp(0.0, 1.2) : 0.0;
+    final percentage = target > 0 ? (progress * 100).round() : 0;
+    final isOverTarget = progress > 1.0;
     
     return Column(
       children: [
@@ -205,12 +252,20 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: 16),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   label,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
+                    fontSize: 15,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
@@ -219,44 +274,72 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
             Text(
               '${current.toStringAsFixed(current < 10 ? 1 : 0)}/${target.toStringAsFixed(0)}$unit',
               style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: isOverTarget 
+                  ? Colors.red.shade600 
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Stack(
           children: [
             Container(
-              height: 8,
+              height: 10,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(5),
               ),
             ),
             FractionallySizedBox(
-              widthFactor: progress,
+              widthFactor: progress.clamp(0.0, 1.0),
               child: Container(
-                height: 8,
+                height: 10,
                 decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(4),
+                  color: isOverTarget ? Colors.red.shade400 : color,
+                  borderRadius: BorderRadius.circular(5),
                 ),
               ),
             ),
+            if (isOverTarget)
+              FractionallySizedBox(
+                widthFactor: 1.0,
+                child: Container(
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade400,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ),
           ],
         ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            '$percentage%',
-            style: TextStyle(
-              fontSize: 10,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '$percentage%',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: isOverTarget 
+                  ? Colors.red.shade600 
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
+            if (isOverTarget)
+              Text(
+                'Over target',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.red.shade600,
+                ),
+              ),
+          ],
         ),
       ],
     );
@@ -266,29 +349,55 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
     BuildContext context,
     String label,
     String value,
+    String unit,
     IconData icon,
     Color color,
   ) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
           ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onSurface,
+          const SizedBox(height: 10),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 4),
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                TextSpan(
+                  text: unit,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

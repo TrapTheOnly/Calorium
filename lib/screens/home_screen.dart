@@ -6,6 +6,7 @@ import 'date_picker_screen.dart';
 import 'inventory_screen.dart';
 import 'ai_quick_add_screen.dart';
 import 'settings_screen.dart';
+import 'weekly_analysis_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   double todayCal = 0;
+  bool _hasSevenDaysData = false;
   final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
   final String prettyToday = DateFormat.yMMMMd().format(DateTime.now());
   
@@ -23,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadTodayCalories();
+    _checkSevenDaysData();
   }
   
   Future<void> _loadTodayCalories() async {
@@ -36,6 +39,26 @@ class _HomeScreenState extends State<HomeScreen> {
     
     setState(() {
       todayCal = sum;
+    });
+  }
+  
+  Future<void> _checkSevenDaysData() async {
+    final logService = LogService();
+    int daysWithData = 0;
+    
+    // Check the past 7 days
+    for (int i = 0; i < 7; i++) {
+      final date = DateTime.now().subtract(Duration(days: i));
+      final dateString = DateFormat('yyyy-MM-dd').format(date);
+      final entries = await logService.getLogEntriesByDate(dateString);
+      
+      if (entries.isNotEmpty) {
+        daysWithData++;
+      }
+    }
+    
+    setState(() {
+      _hasSevenDaysData = daysWithData >= 7;
     });
   }
   
@@ -182,6 +205,45 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
               
               _buildActionButton(
+                'Weekly Analysis',
+                _hasSevenDaysData 
+                  ? () {
+                      // Get the past 7 days starting from today
+                      final endDate = DateTime.now();
+                      final startDate = endDate.subtract(const Duration(days: 6));
+                      final weekStartString = DateFormat('yyyy-MM-dd').format(startDate);
+                      
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => WeeklyAnalysisScreen(weekStartDate: weekStartString),
+                        ),
+                      );
+                    }
+                  : () {
+                      // Show alert that 7 days of data is required
+                      showDialog(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Insufficient Data'),
+                            content: const Text('At least 7 days of logged food data is required to generate a weekly analysis. Please continue logging your meals and try again.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                isEnabled: _hasSevenDaysData,
+              ),
+              
+              const SizedBox(height: 20),
+              
+              _buildActionButton(
                 'Settings',
                 () {
                   Navigator.push(
@@ -199,11 +261,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
   
-  Widget _buildActionButton(String text, VoidCallback onPressed) {
+  Widget _buildActionButton(String text, VoidCallback onPressed, {bool isEnabled = true}) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isEnabled ? onPressed : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../utils/theme_provider.dart';
 import '../services/settings_service.dart';
+import '../services/scheduler_service.dart';
+import '../services/debug_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -15,11 +18,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _calorieTargetController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
+  final TextEditingController _proteinController = TextEditingController();
+  final TextEditingController _carbsController = TextEditingController();
+  final TextEditingController _fatController = TextEditingController();
   String? _selectedSex;
   String _selectedActivityLevel = 'moderate';
   String _selectedGoals = 'maintenance';
   bool _isLoading = false;
-  bool _isCalculatingTargets = false;
 
   @override
   void initState() {
@@ -32,10 +38,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final calorieTarget = await SettingsService.getCalorieTarget();
     final age = await SettingsService.getAge();
     final weight = await SettingsService.getWeight();
+    final height = await SettingsService.getHeight();
     final sex = await SettingsService.getSex();
     final activityLevel = await SettingsService.getActivityLevel();
     final goals = await SettingsService.getGoals();
     final apiKey = await SettingsService.getGeminiApiKey();
+    final macroTargets = await SettingsService.getMacroTargets();
 
     if (mounted) {
       setState(() {
@@ -46,6 +54,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _calorieTargetController.text = calorieTarget?.toString() ?? '';
         _ageController.text = age?.toString() ?? '';
         _weightController.text = weight?.toString() ?? '';
+        _heightController.text = height?.toString() ?? '';
+        _proteinController.text = macroTargets?['protein']?.toString() ?? '';
+        _carbsController.text = macroTargets?['carbs']?.toString() ?? '';
+        _fatController.text = macroTargets?['fat']?.toString() ?? '';
       });
     }
   }
@@ -57,6 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       await SettingsService.setGeminiApiKey(_apiKeyController.text.trim());
+      
+      // Setup notifications if profile is also complete
+      await SchedulerService.setupScheduledNotifications();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -84,302 +99,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _calculateAiTargets() async {
-    if (!await SettingsService.hasCompleteProfile()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill in all profile information first'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    if (!await SettingsService.hasGeminiApiKey()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please set up your Gemini AI API key first'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isCalculatingTargets = true;
-    });
-
+  Future<void> _saveProfile() async {
     try {
-      final aiResponse = await SettingsService.calculateMacroTargets();
-      if (aiResponse != null) {
-        // Get the full AI response for display
-        final fullResponse = await SettingsService.getLastAiResponse();
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('AI targets calculated successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+      // Save basic profile
+      if (_ageController.text.isNotEmpty) {
+        await SettingsService.setAge(int.tryParse(_ageController.text) ?? 0);
+      }
+      if (_weightController.text.isNotEmpty) {
+        await SettingsService.setWeight(double.tryParse(_weightController.text) ?? 0);
+      }
+      if (_heightController.text.isNotEmpty) {
+        await SettingsService.setHeight(double.tryParse(_heightController.text) ?? 0);
+      }
+      if (_selectedSex != null) {
+        await SettingsService.setSex(_selectedSex!);
+      }
+      await SettingsService.setActivityLevel(_selectedActivityLevel);
+      await SettingsService.setGoals(_selectedGoals);
 
-        // Show results dialog with AI justification
-        _showAiResultsDialog(aiResponse, fullResponse);
-      } else {
-        throw Exception('Failed to calculate targets');
+      // Save macro targets if all are provided
+      if (_proteinController.text.isNotEmpty && 
+          _carbsController.text.isNotEmpty && 
+          _fatController.text.isNotEmpty) {
+        final protein = double.tryParse(_proteinController.text) ?? 0;
+        final carbs = double.tryParse(_carbsController.text) ?? 0;
+        final fat = double.tryParse(_fatController.text) ?? 0;
+      
+        await SettingsService.setMacroTargets(protein, carbs, fat);
+      }
+
+      // Setup notifications if API key is also available
+      await SchedulerService.setupScheduledNotifications();
+
+      if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+            content: Text('Settings saved successfully!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error calculating targets: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isCalculatingTargets = false;
-      });
-    }
-  }
-
-  void _showAiResultsDialog(Map<String, double> targets, Map<String, dynamic>? fullResponse) async {
-    final calorieTarget = await SettingsService.getCalorieTarget();
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.auto_awesome,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        'AI Calculated Targets',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                // Targets Summary
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildTargetItem('Protein', '${targets['protein']?.toStringAsFixed(0)}g', Colors.red),
-                          _buildTargetItem('Carbs', '${targets['carbs']?.toStringAsFixed(0)}g', Colors.amber),
-                          _buildTargetItem('Fat', '${targets['fat']?.toStringAsFixed(0)}g', Colors.purple),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Daily Calorie Target: ${calorieTarget?.toStringAsFixed(0) ?? '0'} kcal',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                if (fullResponse != null) ...[
-                  const SizedBox(height: 24),
-                  
-                  // AI Explanation
-                  Text(
-                    'AI Justification',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              fullResponse['explanation'] ?? 'No explanation provided',
-                              style: TextStyle(
-                                fontSize: 14,
-                                height: 1.5,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                            ),
-                            
-                            if (fullResponse['tips'] != null) ...[
-                              const SizedBox(height: 16),
-                              Text(
-                                'Nutrition Tips:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...((fullResponse['tips'] as List).map((tip) => Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '• ',
-                                      style: TextStyle(
-                                        color: Theme.of(context).colorScheme.primary,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        tip.toString(),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Theme.of(context).colorScheme.onSurface,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ))),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Got it!',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving settings: $e'),
+            backgroundColor: Colors.red,
+      ),
     );
   }
-
-  Widget _buildTargetItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            label == 'Protein' ? Icons.fitness_center :
-            label == 'Carbs' ? Icons.grain : Icons.opacity,
-            color: color,
-            size: 20,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
+    }
   }
 
-  Future<void> _saveProfile() async {
-    if (_calorieTargetController.text.isNotEmpty) {
-      await SettingsService.setCalorieTarget(double.tryParse(_calorieTargetController.text) ?? 0);
-    }
-    if (_ageController.text.isNotEmpty) {
-      await SettingsService.setAge(int.tryParse(_ageController.text) ?? 0);
-    }
-    if (_weightController.text.isNotEmpty) {
-      await SettingsService.setWeight(double.tryParse(_weightController.text) ?? 0);
-    }
-    if (_selectedSex != null) {
-      await SettingsService.setSex(_selectedSex!);
-    }
-    await SettingsService.setActivityLevel(_selectedActivityLevel);
-    await SettingsService.setGoals(_selectedGoals);
+  double get _calculatedCalories {
+    final protein = double.tryParse(_proteinController.text) ?? 0;
+    final carbs = double.tryParse(_carbsController.text) ?? 0;
+    final fat = double.tryParse(_fatController.text) ?? 0;
+    return (protein * 4) + (carbs * 4) + (fat * 9);
   }
 
   @override
@@ -388,6 +164,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _calorieTargetController.dispose();
     _ageController.dispose();
     _weightController.dispose();
+    _heightController.dispose();
+    _proteinController.dispose();
+    _carbsController.dispose();
+    _fatController.dispose();
     super.dispose();
   }
 
@@ -452,9 +232,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   // Profile Settings Section
                   _buildModernSection(
-                    title: 'Profile & Targets',
+                    title: 'Profile',
                     icon: Icons.person_outline,
                     child: _buildModernProfileSection(),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Nutrition Targets Section
+                  _buildModernSection(
+                    title: 'Nutrition Targets',
+                    icon: Icons.track_changes_outlined,
+                    child: _buildMacroTargetsSection(),
                   ),
                   const SizedBox(height: 24),
 
@@ -464,6 +252,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: Icons.smart_toy_outlined,
                     child: _buildModernApiKeySection(),
                   ),
+                  
+                  // Debug Testing Section (only in debug mode)
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 24),
+                    _buildModernSection(
+                      title: 'Debug Testing',
+                      icon: Icons.bug_report_outlined,
+                      child: _buildDebugTestingSection(),
+                    ),
+                  ],
+                  
                   const SizedBox(height: 32),
                 ],
               ),
@@ -663,8 +462,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 16),
         
-        // Daily Calorie Target - Full Width
-        Container(
+        // Age and Weight Row
+        Row(
+          children: [
+            Expanded(
+              child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
             borderRadius: BorderRadius.circular(16),
@@ -674,7 +476,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Daily Calorie Target',
+                      'Age',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -683,13 +485,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               TextField(
-                controller: _calorieTargetController,
+                      controller: _ageController,
                 keyboardType: TextInputType.number,
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  hintText: '2000',
+                        hintText: '25',
                   hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
-                  suffixText: 'kcal',
+                        suffixText: 'years',
                   suffixStyle: TextStyle(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -706,54 +508,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        
-        // Age and Weight Row
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Age',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _ageController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        hintText: '25',
-                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
-                        suffixText: 'years',
-                        suffixStyle: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Theme.of(context).colorScheme.surface,
-                        contentPadding: const EdgeInsets.all(16),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -802,11 +556,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        
+        // Height - Full Width
+        Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                'Height',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                controller: _heightController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                  hintText: '175',
+                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+                  suffixText: 'cm',
+                        suffixStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        contentPadding: const EdgeInsets.all(16),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
         const SizedBox(height: 24),
         
-        // Biological Sex
         Text(
-          'Biological Sex',
+          'Gender',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -882,18 +680,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 32),
         
-        // Action Buttons
-        Column(
-          children: [
-            // Calculate AI Targets Button
+        // Save Profile Button
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: _isCalculatingTargets ? null : () async {
-                  await _saveProfile(); // Save first
-                  await _calculateAiTargets(); // Then calculate
-                },
+            onPressed: _saveProfile,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -903,49 +695,195 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   elevation: 8,
                   shadowColor: Theme.of(context).colorScheme.primary.withOpacity(0.3),
                 ),
-                child: _isCalculatingTargets
-                    ? Row(
+            child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Theme.of(context).colorScheme.onPrimary,
-                              ),
-                            ),
-                          ),
+                Icon(Icons.save, size: 24),
                           const SizedBox(width: 12),
                           Text(
-                            'Calculating...',
+                  'Save Profile',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
-                      )
-                    : Row(
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMacroTargetsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Set your daily macro targets manually',
+          style: TextStyle(
+            fontSize: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Calculated Calories Display
+        if (_calculatedCalories > 0) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.orange.withOpacity(0.1),
+                  Colors.orange.withOpacity(0.05),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.orange.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.auto_awesome, size: 24),
-                          const SizedBox(width: 12),
+                Icon(
+                  Icons.calculate,
+                  color: Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
                           Text(
-                            'Calculate AI Targets',
+                  'Calculated: ${_calculatedCalories.toStringAsFixed(0)} kcal',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        
+        // Macro Input Fields
+        _buildMacroInputField(
+          'Protein',
+          _proteinController,
+          'g',
+          Colors.red,
+          Icons.fitness_center,
+        ),
+        const SizedBox(height: 16),
+        _buildMacroInputField(
+          'Carbohydrates',
+          _carbsController,
+          'g',
+          Colors.amber,
+          Icons.grain,
+        ),
+        const SizedBox(height: 16),
+        _buildMacroInputField(
+          'Fat',
+          _fatController,
+          'g',
+          Colors.purple,
+          Icons.opacity,
+        ),
+        
+        const SizedBox(height: 20),
+        
+        // Quick calculation info
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: Theme.of(context).colorScheme.primary,
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Formula: (Protein × 4) + (Carbs × 4) + (Fat × 9)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
               ),
             ),
           ],
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMacroInputField(
+    String label,
+    TextEditingController controller,
+    String unit,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            onChanged: (_) => setState(() {}), // Refresh calculated calories
+            decoration: InputDecoration(
+              suffixText: unit,
+              suffixStyle: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1067,7 +1005,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    'How to get your API key',
+                    'AI Nutrition Analysis',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1077,13 +1015,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              _buildInfoStep('1', 'Visit Google AI Studio', 'ai.google.dev'),
+              _buildInfoStep('1', 'Daily Analysis', 'AI analyzes your food intake at 10 PM'),
               const SizedBox(height: 12),
-              _buildInfoStep('2', 'Sign in with Google', 'Use your Google account'),
+              _buildInfoStep('2', 'Smart Suggestions', 'Get 5 personalized nutrition tips'),
               const SizedBox(height: 12),
-              _buildInfoStep('3', 'Create API key', 'Click "Get API key"'),
+              _buildInfoStep('3', 'Motivation', 'Receive motivating quotes based on progress'),
               const SizedBox(height: 12),
-              _buildInfoStep('4', 'Copy and paste', 'Add key to the field above'),
+              _buildInfoStep('4', 'Weekly Reports', 'Comprehensive weekly nutrition summaries'),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1091,7 +1029,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.api,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Get your API key at ai.google.dev',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
                   children: [
                     Icon(
                       Icons.security,
@@ -1107,6 +1068,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1164,5 +1127,276 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildDebugTestingSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.amber.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.amber[700], size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Debug Mode Only - Test AI nutrition analysis features',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.amber[800],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Notification Testing
+        Text(
+          'Test Notifications',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.showTestNotification();
+                    _showSnackBar('Test notification sent!', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.notifications, size: 18),
+                label: Text('Basic Test'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.debugTriggerDailyNotification();
+                    _showSnackBar('Daily notification sent!', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.today, size: 18),
+                label: Text('Daily'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.debugTriggerWeeklyNotification();
+                    _showSnackBar('Weekly notification sent!', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.calendar_view_week, size: 18),
+                label: Text('Weekly'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 20),
+        
+        // AI Analysis Testing
+        Text(
+          'Test AI Analysis',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    _showSnackBar('Running daily analysis...', Colors.blue);
+                    await SchedulerService.debugPerformDailyAnalysis(force: true);
+                    _showSnackBar('Daily analysis completed!', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.analytics, size: 18),
+                label: Text('Daily Analysis'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    _showSnackBar('Running weekly analysis...', Colors.blue);
+                    await SchedulerService.debugPerformWeeklyAnalysis();
+                    _showSnackBar('Weekly analysis completed!', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.insert_chart, size: 18),
+                label: Text('Weekly Analysis'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 20),
+        
+        // System Status & Full Test
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await DebugService.status();
+                    _showSnackBar('System status logged to console', Colors.blue);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.health_and_safety, size: 18),
+                label: Text('Check Status'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    _showSnackBar('Running full test suite...', Colors.blue);
+                    await SchedulerService.debugFullTestSuite();
+                    _showSnackBar('Full test completed! Check console.', Colors.green);
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.play_circle_filled, size: 18),
+                label: Text('Full Test'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 16),
+        
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Debug Tips',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '• Test basic notification first to verify permissions\n'
+                '• Check system status before running AI analysis\n'
+                '• Watch console output for detailed results\n'
+                '• Ensure API key and profile are configured',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+  
+  void _showSnackBar(String message, Color color) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 } 

@@ -6,6 +6,7 @@ import 'inventory_screen.dart';
 import 'log_entry_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/nutrition_summary_card.dart';
+import '../widgets/ai_suggestions_card.dart';
 
 class DailyLogScreen extends StatefulWidget {
   final String date;
@@ -109,103 +110,200 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
               ),
               const SizedBox(height: 28),
               
-              // Totals card
-              NutritionSummaryCard(
-                nutritionData: {
-                  'cal': totals['cal']!,
-                  'prot': totals['prot']!,
-                  'fat': totals['fat']!,
-                  'carb': totals['carb']!,
-                },
-                onSetTargetsTap: _navigateToSettings,
-              ),
-              const SizedBox(height: 28),
-              
-              // Entries list
+              // Scrollable content
               Expanded(
-                child: entries.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No entries yet',
-                          style: TextStyle(color: Color(0xFF888888)),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Totals card
+                      NutritionSummaryCard(
+                        nutritionData: {
+                          'cal': totals['cal']!,
+                          'prot': totals['prot']!,
+                          'fat': totals['fat']!,
+                          'carb': totals['carb']!,
+                        },
+                        onSetTargetsTap: _navigateToSettings,
+                      ),
+                      
+                      // AI Suggestions Card
+                      AiSuggestionsCard(date: widget.date),
+                      
+                      const SizedBox(height: 28),
+                      
+                      // Entries section header
+                      Text(
+                        'Food Entries',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onBackground,
                         ),
-                      )
-                    : ListView.builder(
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final entry = entries[index];
-                          return InkWell(
-                            onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => LogEntryScreen(
-                                    food: {
-                                      'id': entry.foodId,
-                                      'name': entry.foodName!,
-                                      'calories': entry.calories!,
-                                      'fat': entry.fat!,
-                                      'carbs': entry.carbs!,
-                                      'protein': entry.protein!,
-                                      'defaultPortionSize': entry.defaultPortionSize ?? 100.0,
-                                      'portionDescription': entry.portionDescription ?? '100g',
-                                    },
-                                    date: widget.date,
-                                    editMode: true,
-                                    logId: entry.id!,
-                                  ),
-                                ),
-                              );
-                              _loadEntries();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: Color(0xFFECECEC),
-                                    width: 1,
-                                  ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Entries list
+                      entries.isEmpty
+                          ? Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(32),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
                                 ),
                               ),
-                              child: Row(
+                              child: Column(
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          entry.foodName!,
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w600,
-                                            color: Theme.of(context).colorScheme.onSecondaryContainer,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${entry.amount} g',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            color: Color(0xFF607080),
-                                          ),
-                                        ),
-                                      ],
+                                  Icon(
+                                    Icons.restaurant_outlined,
+                                    size: 48,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No entries yet',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
+                                  const SizedBox(height: 8),
                                   Text(
-                                    '${(entry.calories! * entry.amount / 100).toStringAsFixed(0)} kcal',
+                                    'Start tracking your nutrition by adding your first meal',
+                                    textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                      fontSize: 14,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
                                     ),
                                   ),
                                 ],
                               ),
+                            )
+                          : Column(
+                              children: entries.map((entry) {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  child: InkWell(
+                                    onTap: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => LogEntryScreen(
+                                            food: {
+                                              'id': entry.foodId,
+                                              'name': entry.foodName!,
+                                              'calories': entry.calories!,
+                                              'fat': entry.fat!,
+                                              'carbs': entry.carbs!,
+                                              'protein': entry.protein!,
+                                              'defaultPortionSize': entry.defaultPortionSize ?? 100.0,
+                                              'portionDescription': entry.portionDescription ?? '100g',
+                                            },
+                                            date: widget.date,
+                                            editMode: true,
+                                            logId: entry.id!,
+                                          ),
+                                        ),
+                                      );
+                                      _loadEntries();
+                                    },
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(20),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.surface,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Theme.of(context).colorScheme.shadow.withOpacity(0.05),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          // Food icon
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.primaryContainer,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Icon(
+                                              Icons.restaurant,
+                                              color: Theme.of(context).colorScheme.primary,
+                                              size: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          
+                                          // Food details
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  entry.foodName!,
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Theme.of(context).colorScheme.onSurface,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${entry.amount}g',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          
+                                          // Calories
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                '${(entry.calories! * entry.amount / 100).toStringAsFixed(0)}',
+                                                style: TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                              Text(
+                                                'kcal',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
                             ),
-                          );
-                        },
-                      ),
+                      
+                      // Bottom padding for FAB
+                      const SizedBox(height: 80),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ai_service.dart';
 import 'dart:convert';
 
 class SettingsService {
@@ -7,17 +8,13 @@ class SettingsService {
   static const String _calorieTargetKey = 'calorie_target';
   static const String _ageKey = 'age';
   static const String _weightKey = 'weight';
-  static const String _heightKey = 'height';
   static const String _sexKey = 'sex';
   static const String _activityLevelKey = 'activity_level';
   static const String _goalsKey = 'goals';
   static const String _proteinTargetKey = 'protein_target';
   static const String _fatTargetKey = 'fat_target';
   static const String _carbTargetKey = 'carb_target';
-  static const String _dailyAiSuggestionsKey = 'daily_ai_suggestions';
-  static const String _lastAiAnalysisDateKey = 'last_ai_analysis_date';
-  static const String _aiQuoteKey = 'ai_quote';
-  static const String _weeklyAnalysisKey = 'weekly_analysis';
+  static const String _lastAiResponseKey = 'last_ai_response';
 
   // API Key methods
   static Future<void> setGeminiApiKey(String apiKey) async {
@@ -82,16 +79,6 @@ class SettingsService {
     return prefs.getDouble(_weightKey);
   }
 
-  static Future<void> setHeight(double height) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_heightKey, height);
-  }
-
-  static Future<double?> getHeight() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getDouble(_heightKey);
-  }
-
   static Future<void> setSex(String sex) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_sexKey, sex);
@@ -122,16 +109,59 @@ class SettingsService {
     return prefs.getString(_goalsKey) ?? 'maintenance';
   }
 
-  // Manual macro targets (no AI calculation)
-  static Future<void> setMacroTargets(double protein, double carbs, double fat) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_proteinTargetKey, protein);
-    await prefs.setDouble(_carbTargetKey, carbs);
-    await prefs.setDouble(_fatTargetKey, fat);
-    
-    // Calculate and set calorie target based on macros
-    final calories = (protein * 4) + (carbs * 4) + (fat * 9);
-    await prefs.setDouble(_calorieTargetKey, calories);
+  // AI-powered macro target calculation
+  static Future<Map<String, double>?> calculateMacroTargets() async {
+    try {
+      final calorieTarget = await getCalorieTarget();
+      final age = await getAge();
+      final weight = await getWeight();
+      final sex = await getSex();
+      final activityLevel = await getActivityLevel();
+      final goals = await getGoals();
+
+      if (calorieTarget == null || age == null || weight == null || sex == null) {
+        return null; // Missing required profile data
+      }
+
+      final aiResponse = await AiService.calculatePersonalizedTargets(
+        calorieTarget: calorieTarget,
+        age: age,
+        weight: weight,
+        sex: sex,
+        activityLevel: activityLevel,
+        goals: goals,
+      );
+
+      if (aiResponse != null) {
+        // Store the AI-calculated targets
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setDouble(_proteinTargetKey, aiResponse['protein']?.toDouble() ?? 0.0);
+        await prefs.setDouble(_fatTargetKey, aiResponse['fat']?.toDouble() ?? 0.0);
+        await prefs.setDouble(_carbTargetKey, aiResponse['carbs']?.toDouble() ?? 0.0);
+        
+        // Calculate actual calories from macros and update calorie target
+        final protein = aiResponse['protein']?.toDouble() ?? 0.0;
+        final fat = aiResponse['fat']?.toDouble() ?? 0.0;
+        final carbs = aiResponse['carbs']?.toDouble() ?? 0.0;
+        final calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
+        
+        // Update calorie target to match calculated macros
+        await prefs.setDouble(_calorieTargetKey, calculatedCalories);
+        
+        // Store the full AI response for display
+        await prefs.setString(_lastAiResponseKey, json.encode(aiResponse));
+
+        return {
+          'protein': protein,
+          'fat': fat,
+          'carbs': carbs,
+        };
+      }
+    } catch (e) {
+      print('Error calculating AI macro targets: $e');
+    }
+
+    return null;
   }
 
   // Get stored macro targets
@@ -152,73 +182,34 @@ class SettingsService {
     return null;
   }
 
-  // Check if we have complete profile for AI analysis
+  // Set custom macro targets (for manual override)
+  static Future<void> setCustomMacroTargets(double protein, double carbs, double fat) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_proteinTargetKey, protein);
+    await prefs.setDouble(_carbTargetKey, carbs);
+    await prefs.setDouble(_fatTargetKey, fat);
+  }
+
+  // Check if we have complete profile for macro calculation
   static Future<bool> hasCompleteProfile() async {
+    final calorieTarget = await getCalorieTarget();
     final age = await getAge();
     final weight = await getWeight();
-    final height = await getHeight();
     final sex = await getSex();
 
-    return age != null && weight != null && height != null && sex != null;
+    return calorieTarget != null && age != null && weight != null && sex != null;
   }
 
-  // AI Nutrition Analysis methods
-  static Future<void> setDailyAiSuggestions(String date, List<String> suggestions) async {
+  // Get stored AI response for justification display
+  static Future<Map<String, dynamic>?> getLastAiResponse() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('${_dailyAiSuggestionsKey}_$date', json.encode(suggestions));
-  }
-
-  static Future<List<String>?> getDailyAiSuggestions(String date) async {
-    final prefs = await SharedPreferences.getInstance();
-    final suggestionsString = prefs.getString('${_dailyAiSuggestionsKey}_$date');
+    final responseString = prefs.getString(_lastAiResponseKey);
     
-    if (suggestionsString != null) {
+    if (responseString != null) {
       try {
-        final List<dynamic> suggestionsList = json.decode(suggestionsString);
-        return suggestionsList.cast<String>();
+        return json.decode(responseString) as Map<String, dynamic>;
       } catch (e) {
-        print('Error parsing daily AI suggestions: $e');
-        return null;
-      }
-    }
-    
-    return null;
-  }
-
-  static Future<void> setLastAiAnalysisDate(String date) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastAiAnalysisDateKey, date);
-  }
-
-  static Future<String?> getLastAiAnalysisDate() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_lastAiAnalysisDateKey);
-  }
-
-  static Future<void> setAiQuote(String quote) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_aiQuoteKey, quote);
-  }
-
-  static Future<String?> getAiQuote() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_aiQuoteKey);
-  }
-
-  static Future<void> setWeeklyAnalysis(String weekKey, Map<String, dynamic> analysis) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('${_weeklyAnalysisKey}_$weekKey', json.encode(analysis));
-  }
-
-  static Future<Map<String, dynamic>?> getWeeklyAnalysis(String weekKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    final analysisString = prefs.getString('${_weeklyAnalysisKey}_$weekKey');
-    
-    if (analysisString != null) {
-      try {
-        return json.decode(analysisString) as Map<String, dynamic>;
-      } catch (e) {
-        print('Error parsing weekly analysis: $e');
+        print('Error parsing stored AI response: $e');
         return null;
       }
     }

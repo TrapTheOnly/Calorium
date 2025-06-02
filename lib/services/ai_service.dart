@@ -199,56 +199,65 @@ If you see pasta on a dinner plate that covers about half the plate (13cm diamet
 As a professional nutritionist, calculate optimal daily macro targets for this person:
 
 Profile:
-- Daily Calorie Target: $calorieTarget kcal
+- Daily Calorie Target: $calorieTarget kcal (MUST BE EXACT)
 - Age: $age years
 - Weight: $weight kg
 - Sex: $sex
 - Activity Level: $activityDescription
 - Goals: $goalsDescription
 
-Please provide personalized macro recommendations with a 10% buffer for flexibility.
+CRITICAL REQUIREMENTS:
+1. Your macro calculations MUST add up to EXACTLY $calorieTarget calories using this formula:
+   Total Calories = (Protein × 4) + (Carbs × 4) + (Fat × 9)
 
-IMPORTANT CALORIE CALCULATION: 
-Use this exact formula to verify your macro calculations:
-Total Calories = (Fat in grams × 9) + (Carbohydrates in grams × 4) + (Protein in grams × 4)
+2. Calculate macros that precisely hit the calorie target - NO rounding errors or approximations.
 
-Your calculated macros must add up to approximately the target calories using this formula.
+3. Use these evidence-based guidelines:
+   - Protein: 0.8-2.2g per kg body weight (higher for active individuals, muscle building)
+   - Fat: 20-35% of total calories (hormone production, vitamin absorption)
+   - Carbs: Fill remaining calories after protein and fat (minimum 130g for brain function)
+
+4. For activity level "$activityLevel" with goal "$goals":
+   - Sedentary: Lower protein (0.8-1.2g/kg), moderate fat (25-30%)
+   - Light: Moderate protein (1.0-1.4g/kg), balanced fat (25%)
+   - Moderate: Higher protein (1.2-1.6g/kg), moderate fat (25%)
+   - Very Active: High protein (1.6-2.2g/kg), slightly lower fat (20-25%)
+
+CALCULATION PROCESS:
+1. Calculate protein needs based on weight, activity, and goals
+2. Calculate fat as percentage of total calories
+3. Calculate carbs to fill remaining calories exactly
+4. VERIFY: (Protein×4) + (Carbs×4) + (Fat×9) = $calorieTarget
+5. Adjust values to hit EXACT calorie target
 
 IMPORTANT: Respond with ONLY a valid JSON object in this exact format:
 
 {
-  "calories": 2200,
-  "protein": 132.0,
+  "calories": $calorieTarget,
+  "protein": 125.0,
   "carbs": 275.0,
-  "fat": 73.3,
-  "explanation": "Based on your profile as a 25-year-old male weighing 70kg with moderate activity for weight maintenance, I calculated: Protein at 1.6g/kg (112g × 1.1 = 123g) for muscle maintenance, Fat at 25% of calories (550 kcal ÷ 9 = 61g × 1.1 = 67g) for hormone production, and Carbs to fill remaining calories (67g×9 + 123g×4 + 275g×4 = 2199 kcal). The 10% buffer provides flexibility while meeting your nutritional needs.",
+  "fat": 73.0,
   "tips": [
     "Focus on lean proteins like chicken, fish, and legumes",
     "Include complex carbs like oats, quinoa, and sweet potatoes", 
-    "Add healthy fats from nuts, avocado, and olive oil"
+    "Add healthy fats from nuts, avocado, and olive oil",
+    "Stay hydrated and eat plenty of vegetables"
   ]
 }
 
-Calculate based on:
-- Protein: 1.2-2.0g per kg body weight (adjust for activity/goals)
-- Fat: 20-35% of total calories
-- Carbs: Fill remaining calories (minimum 130g for brain function)
-- Add 10% buffer to all values for flexibility
-- Consider sex differences in metabolism
-- Adjust for age-related metabolic changes
-- VERIFY your calculations using the calorie formula above
-
-In your explanation, show your calculation process and why you chose these specific ratios for this individual. Include the calorie verification calculation.
+The macro values must be precise decimals that add up to exactly $calorieTarget calories.
+Do not include any explanation field - only macros and tips.
+Ensure your activity level interpretation matches "$activityDescription" exactly.
 """
               }
             ]
           }
         ],
         "generationConfig": {
-          "temperature": 0.3,
+          "temperature": 0.1,
           "topK": 1,
           "topP": 1,
-          "maxOutputTokens": 1024
+          "maxOutputTokens": 512
         }
       };
       
@@ -308,7 +317,24 @@ In your explanation, show your calculation process and why you chose these speci
                 macroData.containsKey('protein') &&
                 macroData.containsKey('carbs') &&
                 macroData.containsKey('fat')) {
-              return macroData;
+              
+              // Ensure the calculated calories match the target within a small tolerance
+              final protein = (macroData['protein'] as num).toDouble();
+              final carbs = (macroData['carbs'] as num).toDouble();
+              final fat = (macroData['fat'] as num).toDouble();
+              final calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
+              
+              print('AI provided macros: P:$protein C:$carbs F:$fat');
+              print('Calculated calories: $calculatedCalories, Target: $calorieTarget');
+              
+              // Allow small rounding tolerance (within 5 calories)
+              if ((calculatedCalories - calorieTarget).abs() <= 5.0) {
+                return macroData;
+              } else {
+                print('WARNING: AI macro calculations do not match calorie target');
+                // Still return the data but log the discrepancy
+                return macroData;
+              }
             } else {
               throw Exception('Invalid response structure from AI');
             }
