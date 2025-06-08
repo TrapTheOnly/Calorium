@@ -7,7 +7,7 @@ import 'settings_service.dart';
 class AiService {
   static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
   
-  static Future<Map<String, dynamic>?> analyzeFood(File imageFile) async {
+  static Future<Map<String, dynamic>?> analyzeFood(File imageFile, {String? userPrompt}) async {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
@@ -18,14 +18,11 @@ class AiService {
       final imageBytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(imageBytes);
       
-      // Prepare the request body
-      final requestBody = {
-        "contents": [
-          {
-            "parts": [
-              {
-                "text": """
+      // Create the analysis prompt with optional user input
+      String analysisPrompt = """
 Analyze this food image and provide detailed nutritional information with accurate portion estimation.
+
+${userPrompt != null && userPrompt.isNotEmpty ? 'USER CONTEXT: $userPrompt\n\nPlease take this context into account when analyzing the food.' : ''}
 
 IMPORTANT: You must respond with ONLY a valid JSON object in this exact format, with no additional text or explanations:
 
@@ -58,17 +55,34 @@ PORTION ESTIMATION GUIDELINES:
 4. Estimate the food dimensions relative to reference objects
 5. Calculate approximate weight in grams for the actual portion shown
 
+PORTION SIZE LOGIC FOR INDIVIDUAL ITEMS:
+- For countable items (cherry tomatoes, grapes, nuts, berries, etc.): Base the portion on a SINGLE ITEM, not the total shown
+- Example: If you see 3 cherry tomatoes, the portion should be "1 cherry tomato (15g)", not "3 cherry tomatoes (45g)"
+- Example: If you see 5 grapes, the portion should be "1 grape (5g)", not "5 grapes (25g)"
+- For dishes/meals: Base the portion on the total amount shown or a reasonable serving size
+- Example: If you see a bowl of pasta, the portion should be "1 serving (200g)" representing the whole bowl
+
 NUTRITION CALCULATION:
 - All nutritional values should be per 100g
 - Use decimal numbers for precision
 - Be specific with the food name based on what you see
 - If you can't identify the food clearly, use "Unknown dish" as the name
-- The defaultPortionSize should be your best estimate of the actual portion weight shown in the image
+- The defaultPortionSize should reflect the portion logic above
 - Give a clear portion description that matches the estimated weight
 
 EXAMPLE REASONING:
-If you see pasta on a dinner plate that covers about half the plate (13cm diameter area), with a depth of about 2cm, that's roughly 265cm³. For pasta, that would be approximately 185g.
-"""
+- 3 cherry tomatoes visible: defaultPortionSize = 15 (weight of 1 tomato), portionDescription = "1 cherry tomato (15g)"
+- Pasta on a dinner plate: defaultPortionSize = 185 (total serving), portionDescription = "1 serving (185g)"
+- 2 cookies: defaultPortionSize = 25 (weight of 1 cookie), portionDescription = "1 cookie (25g)"
+""";
+      
+      // Prepare the request body
+      final requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": analysisPrompt
               },
               {
                 "inline_data": {
@@ -454,6 +468,190 @@ Ensure your activity level interpretation matches "$activityDescription" exactly
       }
     } catch (e) {
       print('AI Macro Service Error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> correctFoodAnalysis({
+    required File imageFile,
+    required Map<String, dynamic> originalAnalysis,
+    required String userCorrection,
+  }) async {
+    try {
+      final apiKey = await SettingsService.getGeminiApiKey();
+      if (apiKey == null || apiKey.isEmpty) {
+        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+      }
+      
+      // Read image file as bytes
+      final imageBytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(imageBytes);
+      
+      // Extract original portion info to preserve it
+      final originalPortionSize = originalAnalysis['defaultPortionSize'] ?? 100;
+      final originalPortionDescription = originalAnalysis['portionDescription'] ?? '1 serving';
+      
+      // Prepare the request body
+      final requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": """
+You previously analyzed this food image and gave the following result:
+${json.encode(originalAnalysis)}
+
+The user has provided this correction/clarification:
+"$userCorrection"
+
+Please re-analyze the image taking into account the user's feedback and provide corrected nutritional values.
+
+CRITICAL REQUIREMENTS:
+1. Keep the EXACT SAME portion size and description: defaultPortionSize = $originalPortionSize, portionDescription = "$originalPortionDescription"
+2. Only adjust the nutritional values (calories, protein, carbs, fat) per 100g based on the user's correction
+3. Do NOT change the portion size or portion description - these must remain identical to the original analysis
+
+IMPORTANT: You must respond with ONLY a valid JSON object in this exact format, with no additional text or explanations:
+
+{
+  "name": "Corrected food name",
+  "calories": 250,
+  "protein": 15.5,
+  "carbs": 30.2,
+  "fat": 8.7,
+  "defaultPortionSize": $originalPortionSize,
+  "portionDescription": "$originalPortionDescription"
+}
+
+Apply the user's correction to adjust the nutritional values per 100g (calories, protein, carbs, fat) but keep the portion size and description exactly the same as the original analysis. If they're mentioning modifications like "diet/low-fat" or "without rice", estimate the nutritional impact per 100g while maintaining the same portion weight.
+"""
+              },
+              {
+                "inline_data": {
+                  "mime_type": "image/jpeg",
+                  "data": base64Image
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "temperature": 0.1,
+          "topK": 1,
+          "topP": 1,
+          "maxOutputTokens": 512
+        }
+      };
+      
+      // Make the API request
+      final response = await http.post(
+        Uri.parse('$_baseUrl?key=$apiKey'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(requestBody),
+      );
+      
+      print('AI Food Correction Response Status: ${response.statusCode}');
+      print('AI Food Correction Response Body: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        // Similar parsing logic as the original method
+        if (data == null || data is! Map<String, dynamic>) {
+          throw Exception('Invalid response structure from API');
+        }
+        
+        final candidates = data['candidates'];
+        if (candidates == null || candidates is! List || candidates.isEmpty) {
+          throw Exception('No candidates in API response');
+        }
+        
+        final firstCandidate = candidates[0];
+        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
+          throw Exception('Invalid candidate structure');
+        }
+        
+        final content = firstCandidate['content'];
+        if (content == null || content is! Map<String, dynamic>) {
+          throw Exception('No content in candidate');
+        }
+        
+        final parts = content['parts'];
+        if (parts == null || parts is! List || parts.isEmpty) {
+          throw Exception('No parts in content');
+        }
+        
+        final firstPart = parts[0];
+        if (firstPart == null || firstPart is! Map<String, dynamic>) {
+          throw Exception('Invalid part structure');
+        }
+        
+        final text = firstPart['text'];
+        if (text == null || text is! String) {
+          throw Exception('No text in response part');
+        }
+        
+        // Parse the JSON response from Gemini
+        try {
+          // Clean the response by removing markdown code block formatting
+          String cleanedText = text.trim();
+          
+          // Remove markdown code block markers if present
+          if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.substring(7); // Remove '```json'
+          } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.substring(3); // Remove '```'
+          }
+          
+          if (cleanedText.endsWith('```')) {
+            cleanedText = cleanedText.substring(0, cleanedText.length - 3); // Remove ending '```'
+          }
+          
+          cleanedText = cleanedText.trim();
+          
+          print('Cleaned AI Food Correction Response: $cleanedText');
+          
+          final nutritionData = json.decode(cleanedText);
+          
+          // Validate the nutrition data structure
+          if (nutritionData is! Map<String, dynamic>) {
+            throw Exception('Nutrition data is not a valid object');
+          }
+          
+          // Ensure required fields exist
+          final requiredFields = ['name', 'calories', 'protein', 'carbs', 'fat', 'defaultPortionSize', 'portionDescription'];
+          for (String field in requiredFields) {
+            if (!nutritionData.containsKey(field)) {
+              throw Exception('Missing required field: $field');
+            }
+          }
+          
+          print('Successfully parsed corrected nutrition data: $nutritionData');
+          return nutritionData;
+        } catch (e) {
+          print('Error parsing AI correction response: $e');
+          print('AI Response Text: $text');
+          throw Exception('Invalid response format from AI: $e');
+        }
+      } else {
+        String errorMessage = 'Unknown error';
+        try {
+          final errorData = json.decode(response.body);
+          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+            final error = errorData['error'];
+            if (error is Map<String, dynamic> && error.containsKey('message')) {
+              errorMessage = error['message'].toString();
+            }
+          }
+        } catch (e) {
+          errorMessage = 'Failed to parse error response: ${response.body}';
+        }
+        throw Exception('API Error (${response.statusCode}): $errorMessage');
+      }
+    } catch (e) {
+      print('AI Correction Service Error: $e');
       rethrow;
     }
   }

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/log_entry.dart';
 import '../services/log_service.dart';
-import 'inventory_screen.dart';
 import 'log_entry_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/nutrition_summary_card.dart';
 import '../widgets/ai_suggestions_card.dart';
+import '../widgets/add_food_options_dialog.dart';
 
 class DailyLogScreen extends StatefulWidget {
   final String date;
@@ -63,6 +63,16 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
     );
     // Refresh the screen when returning from settings
     setState(() {});
+  }
+
+  void _showAddEntryOptions() {
+    AddFoodOptionsDialog.show(
+      context,
+      date: widget.date,
+      title: 'Add Food Entry',
+      subtitle: 'Choose how you want to add food to your log',
+      onComplete: _loadEntries,
+    );
   }
 
   @override
@@ -313,15 +323,7 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
         width: MediaQuery.of(context).size.width - 48,
         height: 56,
         child: FloatingActionButton.extended(
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => InventoryScreen(date: widget.date),
-              ),
-            );
-            _loadEntries();
-          },
+          onPressed: _showAddEntryOptions,
           backgroundColor: Theme.of(context).colorScheme.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
           label: Text(

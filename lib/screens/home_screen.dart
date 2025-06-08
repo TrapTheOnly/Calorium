@@ -3,11 +3,11 @@ import 'package:intl/intl.dart';
 import '../services/log_service.dart';
 import 'daily_log_screen.dart';
 import 'date_picker_screen.dart';
-import 'inventory_screen.dart';
-import 'ai_quick_add_screen.dart';
 import 'ai_meal_planner_screen.dart';
 import 'settings_screen.dart';
 import 'weekly_analysis_screen.dart';
+import 'inventory_screen.dart';
+import '../widgets/add_food_options_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -61,6 +61,16 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _hasSevenDaysData = daysWithData >= 7;
     });
+  }
+  
+  void _showQuickAddOptions() {
+    AddFoodOptionsDialog.show(
+      context,
+      date: todayDate,
+      title: 'Quick Add to Today',
+      subtitle: 'Choose how you want to add food to today\'s log',
+      onComplete: _loadTodayCalories,
+    );
   }
   
   @override
@@ -178,26 +188,21 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               
               _buildActionButton(
-                'Inventory',
-                () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const InventoryScreen()),
-                  );
-                },
+                'Quick Add to Today',
+                _showQuickAddOptions,
               ),
               
               const SizedBox(height: 16),
               
               _buildActionButton(
-                'AI Quick Scan',
+                'Inventory',
                 () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => AiQuickAddScreen(date: todayDate),
+                      builder: (context) => const InventoryScreen(),
                     ),
-                  ).then((_) => _loadTodayCalories());
+                  );
                 },
               ),
               

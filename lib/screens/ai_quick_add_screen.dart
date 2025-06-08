@@ -24,7 +24,10 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   File? _selectedImage;
   bool _isAnalyzing = false;
   Map<String, dynamic>? _nutritionData;
+  bool _saveToInventory = false;
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _promptController = TextEditingController();
+  bool _showPromptInput = false;
 
   @override
   void initState() {
@@ -85,9 +88,8 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
         setState(() {
           _selectedImage = File(photo.path);
           _nutritionData = null;
+          _showPromptInput = true;
         });
-        
-        _analyzeImage();
       }
     } catch (e) {
       if (mounted) {
@@ -113,9 +115,8 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
         setState(() {
           _selectedImage = File(photo.path);
           _nutritionData = null;
+          _showPromptInput = true;
         });
-        
-        _analyzeImage();
       }
     } catch (e) {
       if (mounted) {
@@ -128,15 +129,16 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     }
   }
 
-  Future<void> _analyzeImage() async {
+  Future<void> _analyzeWithPrompt() async {
     if (_selectedImage == null) return;
 
     setState(() {
       _isAnalyzing = true;
+      _showPromptInput = false;
     });
 
     try {
-      final nutritionData = await AiService.analyzeFood(_selectedImage!);
+      final nutritionData = await AiService.analyzeFood(_selectedImage!, userPrompt: _promptController.text.trim());
       
       if (nutritionData != null && mounted) {
         setState(() {
@@ -151,6 +153,9 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
           title: 'Analysis Failed',
           message: 'Failed to analyze image. Please check your API key and try again.\n\nError: $e',
         );
+        setState(() {
+          _showPromptInput = true; // Allow user to try again
+        });
       }
     } finally {
       if (mounted) {
@@ -175,19 +180,40 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     }
 
     try {
-      final foodService = FoodService();
-      final foodId = await foodService.insertFood(
-        Food(
-          name: _nutritionData!['name'] ?? 'AI Analyzed Food',
-          calories: (_nutritionData!['calories'] ?? 0).toDouble(),
-          protein: (_nutritionData!['protein'] ?? 0).toDouble(),
-          carbs: (_nutritionData!['carbs'] ?? 0).toDouble(),
-          fat: (_nutritionData!['fat'] ?? 0).toDouble(),
-          defaultPortionSize: (_nutritionData!['defaultPortionSize'] ?? 100).toDouble(),
-          portionDescription: _nutritionData!['portionDescription'] ?? '1 serving (100g)',
-          type: 'simple',
-        ),
-      );
+      int? foodId;
+      
+      // Only save to inventory if the user opted to do so
+      if (_saveToInventory) {
+        final foodService = FoodService();
+        foodId = await foodService.insertFood(
+          Food(
+            name: _nutritionData!['name'] ?? 'AI Analyzed Food',
+            calories: (_nutritionData!['calories'] ?? 0).toDouble(),
+            protein: (_nutritionData!['protein'] ?? 0).toDouble(),
+            carbs: (_nutritionData!['carbs'] ?? 0).toDouble(),
+            fat: (_nutritionData!['fat'] ?? 0).toDouble(),
+            defaultPortionSize: (_nutritionData!['defaultPortionSize'] ?? 100).toDouble(),
+            portionDescription: _nutritionData!['portionDescription'] ?? '1 serving (100g)',
+            type: 'simple',
+          ),
+        );
+      } else {
+        // Create a temporary food entry just for logging (won't be saved to inventory)
+        final foodService = FoodService();
+        foodId = await foodService.insertFood(
+          Food(
+            name: _nutritionData!['name'] ?? 'AI Analyzed Food',
+            calories: (_nutritionData!['calories'] ?? 0).toDouble(),
+            protein: (_nutritionData!['protein'] ?? 0).toDouble(),
+            carbs: (_nutritionData!['carbs'] ?? 0).toDouble(),
+            fat: (_nutritionData!['fat'] ?? 0).toDouble(),
+            defaultPortionSize: (_nutritionData!['defaultPortionSize'] ?? 100).toDouble(),
+            portionDescription: _nutritionData!['portionDescription'] ?? '1 serving (100g)',
+            type: 'simple',
+            isArchived: true, // Mark as archived so it doesn't show in inventory
+          ),
+        );
+      }
 
       final logService = LogService();
       await logService.insertLogEntry(
@@ -199,11 +225,15 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
       );
 
       if (mounted) {
+        String inventoryMessage = _saveToInventory 
+            ? ' and saved to your inventory'
+            : '';
+        
         AlertHelper.showSuccessAlert(
           context,
           title: 'Added to Log!',
-          message: '${_nutritionData!['name']} has been successfully added to today\'s nutrition log.',
-          actionButtonText: 'View Today',
+          message: '${_nutritionData!['name']} has been successfully added to your nutrition log$inventoryMessage.',
+          actionButtonText: 'View Log',
           onActionPressed: () {
             Navigator.of(context).pop(); // Close the alert
             Navigator.pop(context, true); // Go back to previous screen
@@ -224,6 +254,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   @override
   void dispose() {
     _amountController.dispose();
+    _promptController.dispose();
     super.dispose();
   }
 
@@ -281,12 +312,16 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
                       ] else ...[
                         _buildImagePreview(),
                         const SizedBox(height: 24),
-                        if (_isAnalyzing) ...[
+                        if (_showPromptInput) ...[
+                          _buildPromptInput(),
+                        ] else if (_isAnalyzing) ...[
                           _buildAnalyzingIndicator(),
                         ] else if (_nutritionData != null) ...[
                           _buildNutritionResults(),
                           const SizedBox(height: 24),
                           _buildAmountInput(),
+                          const SizedBox(height: 16),
+                          _buildInventoryToggle(),
                           const SizedBox(height: 32),
                           _buildAddButton(),
                         ],
@@ -334,98 +369,48 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(
+                'AI will analyze the nutrition automatically',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        
-        // Camera button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _checkApiKeyAndTakePhoto,
-            icon: const Icon(Icons.camera_alt),
-            label: const Text('Take Photo'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        ),
-        
-        const SizedBox(height: 12),
-        
-        // Gallery button
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              final hasApiKey = await SettingsService.hasGeminiApiKey();
-              if (!hasApiKey) {
-                _showApiKeyDialog();
-                return;
-              }
-              _pickFromGallery();
-            },
-            icon: const Icon(Icons.photo_library),
-            label: const Text('Choose from Gallery'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildImagePreview() {
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          height: 250,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Image.file(
-              _selectedImage!,
-              fit: BoxFit.cover,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: ElevatedButton.icon(
                 onPressed: _checkApiKeyAndTakePhoto,
                 icon: const Icon(Icons.camera_alt),
-                label: const Text('Retake'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                label: const Text('Take Photo'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _analyzeImage,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Re-analyze'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+              child: ElevatedButton.icon(
+                onPressed: _pickFromGallery,
+                icon: const Icon(Icons.photo_library),
+                label: const Text('From Gallery'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -435,26 +420,54 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     );
   }
 
+  Widget _buildImagePreview() {
+    return Container(
+      width: double.infinity,
+      height: 250,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.file(
+          _selectedImage!,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+
   Widget _buildAnalyzingIndicator() {
     return Container(
       padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         children: [
-          const CircularProgressIndicator(),
+          CircularProgressIndicator(
+            color: Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(height: 16),
           Text(
             'Analyzing your meal...',
             style: TextStyle(
-              fontSize: 16,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'This may take a few seconds',
+            'AI is identifying the food and calculating nutrition',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
             ),
           ),
         ],
@@ -463,50 +476,64 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   }
 
   Widget _buildNutritionResults() {
+    if (_nutritionData == null) return const SizedBox.shrink();
+    
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _nutritionData!['name'] ?? 'Unknown Food',
+            'AI Analysis Results',
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
             ),
           ),
           const SizedBox(height: 16),
           
+          // Food name
           Text(
-            'Nutrition per 100g:',
+            _nutritionData!['name'] ?? 'Unknown Food',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Nutritional values per 100g',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           
+          // Nutrition grid
           Row(
             children: [
               Expanded(
-                child: _buildNutrientCard(
+                child: _buildNutritionBox(
                   'Calories',
-                  '${_nutritionData!['calories']?.toStringAsFixed(0) ?? '0'} kcal',
-                  Icons.local_fire_department,
+                  '${(_nutritionData!['calories'] ?? 0).toStringAsFixed(0)}',
+                  'kcal',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildNutrientCard(
+                child: _buildNutritionBox(
                   'Protein',
-                  '${_nutritionData!['protein']?.toStringAsFixed(1) ?? '0'}g',
-                  Icons.fitness_center,
+                  '${(_nutritionData!['protein'] ?? 0).toStringAsFixed(1)}',
+                  'g',
                 ),
               ),
             ],
@@ -515,18 +542,18 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildNutrientCard(
+                child: _buildNutritionBox(
                   'Carbs',
-                  '${_nutritionData!['carbs']?.toStringAsFixed(1) ?? '0'}g',
-                  Icons.grain,
+                  '${(_nutritionData!['carbs'] ?? 0).toStringAsFixed(1)}',
+                  'g',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildNutrientCard(
+                child: _buildNutritionBox(
                   'Fat',
-                  '${_nutritionData!['fat']?.toStringAsFixed(1) ?? '0'}g',
-                  Icons.opacity,
+                  '${(_nutritionData!['fat'] ?? 0).toStringAsFixed(1)}',
+                  'g',
                 ),
               ),
             ],
@@ -536,21 +563,18 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     );
   }
 
-  Widget _buildNutrientCard(String label, String value, IconData icon) {
+  Widget _buildNutritionBox(String label, String value, String unit) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: Theme.of(context).colorScheme.primary,
-            size: 24,
-          ),
-          const SizedBox(height: 8),
           Text(
             label,
             style: TextStyle(
@@ -558,13 +582,29 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -572,6 +612,9 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   }
 
   Widget _buildAmountInput() {
+    final portionSize = _nutritionData?['defaultPortionSize'] ?? 100;
+    final portionDescription = _nutritionData?['portionDescription'] ?? '1 serving';
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -582,11 +625,19 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Amount (grams)',
+            'Amount to Add',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'AI estimated portion: $portionDescription',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 12),
@@ -594,20 +645,59 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
             controller: _amountController,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
-              hintText: 'Enter amount in grams',
+              labelText: 'Weight in grams',
+              suffixText: 'g',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              suffixText: 'g',
+              helperText: 'Enter the actual weight you consumed',
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            _nutritionData!['portionDescription'] ?? '1 serving (100g)',
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInventoryToggle() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Save to Inventory',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add this food to your inventory for future use',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
+          ),
+          Switch(
+            value: _saveToInventory,
+            onChanged: (value) {
+              setState(() {
+                _saveToInventory = value;
+              });
+            },
+            activeColor: Theme.of(context).colorScheme.primary,
           ),
         ],
       ),
@@ -627,13 +717,80 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: const Text(
-          'Add to Today\'s Log',
-          style: TextStyle(
+        child: Text(
+          _saveToInventory ? 'Add to Log & Inventory' : 'Add to Log',
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPromptInput() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Describe the Food (Optional)',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add details about the food to help AI analyze it more accurately',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _promptController,
+            keyboardType: TextInputType.text,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'e.g., "with rice flour, no sugar, keto"',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _analyzeWithPrompt,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Analyze Food',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
