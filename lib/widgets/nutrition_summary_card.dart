@@ -277,7 +277,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: isOverTarget 
-                  ? Colors.red.shade600 
+                  ? Colors.red 
                   : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -298,7 +298,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
               child: Container(
                 height: 10,
                 decoration: BoxDecoration(
-                  color: isOverTarget ? Colors.red.shade400 : color,
+                  color: isOverTarget ? Colors.red : color,
                   borderRadius: BorderRadius.circular(5),
                 ),
               ),
@@ -309,7 +309,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                 child: Container(
                   height: 10,
                   decoration: BoxDecoration(
-                    color: Colors.red.shade400,
+                    color: Colors.red,
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),
@@ -326,7 +326,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: isOverTarget 
-                  ? Colors.red.shade600 
+                  ? Colors.red 
                   : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -336,7 +336,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
-                  color: Colors.red.shade600,
+                  color: Colors.red,
                 ),
               ),
           ],

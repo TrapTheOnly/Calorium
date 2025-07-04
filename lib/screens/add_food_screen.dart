@@ -25,11 +25,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   final _portionSizeController = TextEditingController();
   final _portionDescController = TextEditingController();
   final _portionsController = TextEditingController();
+  final _tagController = TextEditingController();
   
   final FoodService _foodService = FoodService();
   final LogService _logService = LogService();
   
   bool _usePortions = false; // Toggle between grams and portions
+  List<String> _selectedTags = [];
+  List<String> _availableTags = [];
   
   bool get isEditing => widget.food != null;
   bool get isFromBarcode => widget.food != null && widget.food!.id == null;
@@ -37,6 +40,8 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   @override
   void initState() {
     super.initState();
+    _loadAvailableTags();
+    
     if (isEditing) {
       _nameController.text = widget.food!.name;
       _caloriesController.text = widget.food!.calories.toString();
@@ -45,6 +50,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _proteinController.text = widget.food!.protein.toString();
       _portionSizeController.text = widget.food!.defaultPortionSize.toString();
       _portionDescController.text = widget.food!.portionDescription;
+      _selectedTags = List.from(widget.food!.tags);
     } else {
       _portionSizeController.text = "100";
       _portionDescController.text = "100g";
@@ -55,6 +61,37 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _amountController.text = "100";
       _portionsController.text = "1";
     }
+  }
+  
+  Future<void> _loadAvailableTags() async {
+    try {
+      final tags = await _foodService.getAllSimpleFoodTags();
+      setState(() {
+        _availableTags = tags;
+      });
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+  
+  void _addTag(String tag) {
+    final trimmedTag = tag.trim().toLowerCase();
+    if (trimmedTag.isNotEmpty && !_selectedTags.contains(trimmedTag)) {
+      setState(() {
+        _selectedTags.add(trimmedTag);
+        if (!_availableTags.contains(trimmedTag)) {
+          _availableTags.add(trimmedTag);
+          _availableTags.sort();
+        }
+      });
+      _tagController.clear();
+    }
+  }
+  
+  void _removeTag(String tag) {
+    setState(() {
+      _selectedTags.remove(tag);
+    });
   }
 
   @override
@@ -68,6 +105,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     _portionSizeController.dispose();
     _portionDescController.dispose();
     _portionsController.dispose();
+    _tagController.dispose();
     super.dispose();
   }
 
@@ -84,6 +122,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       type: 'simple',
       defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
       portionDescription: _portionDescController.text,
+      tags: _selectedTags,
     );
     
     await _foodService.updateFood(updatedFood);
@@ -133,6 +172,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       type: 'simple',
       defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
       portionDescription: _portionDescController.text,
+      tags: _selectedTags,
     );
     
     return await _foodService.insertFood(newFood);
@@ -284,6 +324,173 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
               
               _buildFormInput('Portion Size (g)', _portionSizeController, numeric: true),
               _buildFormInput('Description (e.g. "1 bar", "1 cup")', _portionDescController),
+              
+              const SizedBox(height: 12),
+              
+              // Tags section
+              Text(
+                'Tags',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Add tags to help organize and find this food later',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Tag input field
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _tagController,
+                      decoration: InputDecoration(
+                        hintText: 'Enter a tag',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                      ),
+                      onSubmitted: (value) => _addTag(value),
+                      textInputAction: TextInputAction.done,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => _addTag(_tagController.text),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      minimumSize: const Size(60, 56),
+                    ),
+                    child: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Available tags (quick add)
+              if (_availableTags.isNotEmpty) ...[
+                Text(
+                  'Quick Add',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _availableTags.where((tag) => !_selectedTags.contains(tag)).map((tag) => 
+                    GestureDetector(
+                      onTap: () => _addTag(tag),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.add,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ).toList(),
+                ),
+                const SizedBox(height: 12),
+              ],
+              
+              // Selected tags
+              if (_selectedTags.isNotEmpty) ...[
+                Text(
+                  'Selected Tags',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _selectedTags.map((tag) => 
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            tag,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _removeTag(tag),
+                            child: Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ).toList(),
+                ),
+                const SizedBox(height: 12),
+              ],
               
               // Logging section - only show when adding to daily log
               if (widget.date != null) ...[

@@ -190,7 +190,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
               ),
               
               // Request health permissions if not available
-              if (!hasHealthData && widget.onHealthPermissionTap != null) ...[
+              if (widget.onHealthPermissionTap != null) ...[
                 const SizedBox(height: 16),
                 GestureDetector(
                   onTap: widget.onHealthPermissionTap,
@@ -267,43 +267,8 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                 
                 const SizedBox(height: 20),
 
-                // Macronutrients grid
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildMacroItem(
-                        context,
-                        'Protein',
-                        widget.nutritionData['prot'] ?? 0,
-                        _dailyProteinTarget,
-                        'g',
-                        Colors.red,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildMacroItem(
-                        context,
-                        'Carbs',
-                        widget.nutritionData['carb'] ?? 0,
-                        _dailyCarbTarget,
-                        'g',
-                        Colors.orange,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildMacroItem(
-                        context,
-                        'Fat',
-                        widget.nutritionData['fat'] ?? 0,
-                        _dailyFatTarget,
-                        'g',
-                        Colors.purple,
-                      ),
-                    ),
-                  ],
-                ),
+                // Macronutrients - full width vertical cards
+                _buildVerticalMacroCards(context),
               ] else ...[
                 // No targets set message
                 Container(
@@ -392,7 +357,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                     child: Container(
                       decoration: BoxDecoration(
                         color: netProgress > 1.0 
-                          ? Colors.red.withOpacity(0.9)
+                          ? Colors.red
                           : Colors.green.withOpacity(0.8),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -424,7 +389,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                 'Burned: ${burned.round()} kcal',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.red.withOpacity(0.8),
+                  color: Colors.red,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -457,7 +422,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                 height: 4,
                 decoration: BoxDecoration(
                   color: netProgress > 1.0 
-                    ? Colors.red.withOpacity(0.9)
+                    ? Colors.red
                     : Colors.green.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(2),
                 ),
@@ -501,6 +466,39 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
     );
   }
 
+  Widget _buildVerticalMacroCards(BuildContext context) {
+    return Column(
+      children: [
+        _buildMacroItem(
+          context,
+          'Protein',
+          widget.nutritionData['prot'] ?? 0,
+          _dailyProteinTarget,
+          'g',
+          Colors.red,
+        ),
+        const SizedBox(height: 12),
+        _buildMacroItem(
+          context,
+          'Carbs',
+          widget.nutritionData['carb'] ?? 0,
+          _dailyCarbTarget,
+          'g',
+          Colors.orange,
+        ),
+        const SizedBox(height: 12),
+        _buildMacroItem(
+          context,
+          'Fat',
+          widget.nutritionData['fat'] ?? 0,
+          _dailyFatTarget,
+          'g',
+          Colors.purple,
+        ),
+      ],
+    );
+  }
+
   Widget _buildMacroItem(
     BuildContext context,
     String label,
@@ -513,7 +511,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
     final percentage = target > 0 ? ((current / target) * 100).round() : 0;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -523,52 +521,54 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top row: Label with icon and current/target values
           Row(
             children: [
               Container(
-                width: 8,
-                height: 8,
+                width: 10,
+                height: 10,
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${current.round()}/$target$unit',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$percentage%',
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${current.round()}/$target$unit',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
+          // Progress bar spanning full width
           LinearProgressIndicator(
             value: progress,
             backgroundColor: color.withOpacity(0.2),
             valueColor: AlwaysStoppedAnimation<Color>(color),
-            minHeight: 4,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$percentage%',
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-            ),
+            minHeight: 6,
           ),
         ],
       ),

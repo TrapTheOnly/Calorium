@@ -54,7 +54,7 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
           // Create controller for this component
           _amountControllers[food.id!] = TextEditingController(text: amount > 0 ? amount.toString() : '');
           
-          return {
+          return <String, dynamic>{
             'food': food,
             'amount': amount,
           };
@@ -83,10 +83,10 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
       _amountControllers[food.id!] = TextEditingController(text: '0.0');
       
       setState(() {
-        components.add({
+        components.add(Map<String, dynamic>.from({
           'food': food,
           'amount': 0.0,
-        });
+        }));
       });
     }
   }
@@ -405,7 +405,7 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
                           TextButton(
                             onPressed: () => _removeComponent(food.id!),
                             style: TextButton.styleFrom(
-                              backgroundColor: const Color(0xFFFF4455),
+                              backgroundColor: Colors.red,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(22),
@@ -512,8 +512,8 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
                 child: ElevatedButton(
                   onPressed: canSave ? _saveRecipe : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: canSave ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
-                    foregroundColor: canSave ? Colors.white : Colors.grey.shade500,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     disabledBackgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.4),
                     disabledForegroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 20),

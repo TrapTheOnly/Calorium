@@ -1,4 +1,4 @@
- import '../models/custom_recipe.dart';
+import '../models/custom_recipe.dart';
 import 'database_service.dart';
 
 class CustomRecipeService {
@@ -268,5 +268,72 @@ class CustomRecipeService {
         FOREIGN KEY (foodId) REFERENCES foods (id) ON DELETE CASCADE
       )
     ''');
+  }
+
+  /// Get all unique tags from custom recipes
+  static Future<List<String>> getAllCustomRecipeTags() async {
+    try {
+      final db = await DatabaseService.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'custom_recipes',
+        columns: ['tags'],
+      );
+      
+      Set<String> allTags = {};
+      for (var map in maps) {
+        final tagsString = map['tags']?.toString() ?? '';
+        if (tagsString.isNotEmpty) {
+          try {
+            final tags = tagsString
+                .split('|')
+                .where((tag) => tag.trim().isNotEmpty)
+                .map((tag) => tag.trim())
+                .cast<String>();
+            allTags.addAll(tags);
+          } catch (e) {
+            // Skip this entry if parsing fails
+            continue;
+          }
+        }
+      }
+      
+      List<String> sortedTags = allTags.toList();
+      sortedTags.sort();
+      return sortedTags;
+    } catch (e) {
+      // Return empty list if database operation fails
+      return [];
+    }
+  }
+
+  /// Filter custom recipes by tags and search query
+  static Future<List<CustomRecipe>> filterCustomRecipes({String? searchQuery, List<String>? tags}) async {
+    final db = await DatabaseService.instance.database;
+    String whereClause = '1=1'; // Always true base condition
+    List<dynamic> whereArgs = [];
+    
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      final searchTerm = '%${searchQuery.toLowerCase()}%';
+      whereClause += ' AND (LOWER(name) LIKE ? OR LOWER(ingredients) LIKE ? OR LOWER(description) LIKE ?)';
+      whereArgs.addAll([searchTerm, searchTerm, searchTerm]);
+    }
+    
+    final List<Map<String, dynamic>> maps = await db.query(
+      'custom_recipes',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'createdAt DESC',
+    );
+    
+    List<CustomRecipe> recipes = maps.map((map) => CustomRecipe.fromMap(map)).toList();
+    
+    // Filter by tags if provided
+    if (tags != null && tags.isNotEmpty) {
+      recipes = recipes.where((recipe) {
+        return tags.every((tag) => recipe.tags.contains(tag));
+      }).toList();
+    }
+    
+    return recipes;
   }
 }

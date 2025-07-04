@@ -4,6 +4,8 @@ import '../services/custom_recipe_service.dart';
 import '../services/log_service.dart';
 import '../models/log_entry.dart';
 import '../widgets/custom_alert.dart';
+import 'ai_meal_planner_screen.dart';
+import 'log_entry_screen.dart';
 
 class CustomRecipeDetailScreen extends StatefulWidget {
   final CustomRecipe recipe;
@@ -491,9 +493,8 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
+                      color: Theme.of(context).colorScheme.primary,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -501,17 +502,18 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                         Text(
                           tag,
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onPrimary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         GestureDetector(
                           onTap: () => _removeTag(tag),
                           child: Icon(
                             Icons.close,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
                       ],
@@ -772,27 +774,18 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     }
   }
 
-  void _showDeleteConfirmation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Recipe'),
-        content: Text('Are you sure you want to delete "${_recipe.name}"? This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _deleteRecipe();
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
+  void _showDeleteConfirmation() async {
+    final bool confirm = await AlertHelper.showConfirmationAlert(
+      context,
+      title: 'Delete Recipe',
+      message: 'Are you sure you want to delete "${_recipe.name}"? This action cannot be undone.',
+      confirmButtonText: 'Delete',
+      type: AlertType.error,
+    ) ?? false;
+
+    if (confirm) {
+      await _deleteRecipe();
+    }
   }
 
   Future<void> _deleteRecipe() async {
@@ -813,116 +806,112 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   }
 
   void _showDifficultyEditor() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Difficulty'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Select recipe difficulty:'),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _tempDifficulty,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+    AlertHelper.showCustomDialog<void>(
+      context,
+      title: 'Edit Difficulty',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Select recipe difficulty:'),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _tempDifficulty,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              items: ['easy', 'medium', 'hard'].map((difficulty) {
-                return DropdownMenuItem(
-                  value: difficulty,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: _getDifficultyColor(difficulty),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_capitalizeFirst(difficulty)),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _tempDifficulty = value;
-                  });
-                }
-              },
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              try {
-                final updatedRecipe = _recipe.copyWith(difficulty: _tempDifficulty);
-                await CustomRecipeService.updateCustomRecipe(updatedRecipe);
+            items: ['easy', 'medium', 'hard'].map((difficulty) {
+              return DropdownMenuItem(
+                value: difficulty,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _getDifficultyColor(difficulty),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(_capitalizeFirst(difficulty)),
+                  ],
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
                 setState(() {
-                  _recipe = updatedRecipe;
+                  _tempDifficulty = value;
                 });
-                Navigator.of(context).pop();
-                AlertHelper.showSuccessAlert(
-                  context,
-                  title: 'Difficulty Updated',
-                  message: 'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
-                );
-              } catch (e) {
-                Navigator.of(context).pop();
-                _showErrorSnackBar('Failed to update difficulty: $e');
               }
             },
-            child: const Text('Save'),
           ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () async {
+            try {
+              final updatedRecipe = _recipe.copyWith(difficulty: _tempDifficulty);
+              await CustomRecipeService.updateCustomRecipe(updatedRecipe);
+              setState(() {
+                _recipe = updatedRecipe;
+              });
+              Navigator.of(context).pop();
+              AlertHelper.showSuccessAlert(
+                context,
+                title: 'Difficulty Updated',
+                message: 'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
+              );
+            } catch (e) {
+              Navigator.of(context).pop();
+              _showErrorSnackBar('Failed to update difficulty: $e');
+            }
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 
   void _showAddTagDialog() {
     _newTagController.clear();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Tag'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _newTagController,
-              decoration: const InputDecoration(
-                labelText: 'Enter new tag',
-                hintText: 'e.g., breakfast, vegetarian, quick',
-              ),
+    AlertHelper.showCustomDialog<void>(
+      context,
+      title: 'Add Tag',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _newTagController,
+            decoration: const InputDecoration(
+              labelText: 'Enter new tag',
+              hintText: 'e.g., breakfast, vegetarian, quick',
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Popular tags: breakfast, lunch, dinner',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: _addTag,
-            child: const Text('Add'),
+          const SizedBox(height: 16),
+          const Text(
+            'Popular tags: breakfast, lunch, dinner',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _addTag,
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 

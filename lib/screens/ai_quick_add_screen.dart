@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/ai_service.dart';
-import '../services/settings_service.dart';
+import '../models/log_entry.dart';
+import '../models/food.dart';
 import '../services/log_service.dart';
 import '../services/food_service.dart';
-import '../models/food.dart';
-import '../models/log_entry.dart';
+import '../services/ai_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/custom_alert.dart';
 import 'settings_screen.dart';
 
@@ -47,31 +47,18 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   }
 
   void _showApiKeyDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('API Key Required'),
-        content: const Text(
-          'You need to set up your Gemini AI API key to use this feature. '
-          'Would you like to go to settings now?'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-            child: const Text('Settings'),
-          ),
-        ],
-      ),
+    AlertHelper.showInfoAlert(
+      context,
+      title: 'API Key Required',
+      message: 'You need to set up your Gemini AI API key to use this feature. Would you like to go to settings now?',
+      actionButtonText: 'Settings',
+      onActionPressed: () {
+        Navigator.of(context).pop(); // Close the alert
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+        );
+      },
     );
   }
 

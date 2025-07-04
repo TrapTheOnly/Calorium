@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'calories.db');
     return await openDatabase(
       path,
-      version: 3, // Increased version for custom recipes
+      version: 4, // Increased version for tags support
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -37,7 +37,8 @@ class DatabaseService {
         type TEXT DEFAULT 'simple',
         isArchived INTEGER DEFAULT 0,
         defaultPortionSize REAL DEFAULT 100.0,
-        portionDescription TEXT DEFAULT '100g'
+        portionDescription TEXT DEFAULT '100g',
+        tags TEXT DEFAULT ''
       )
     ''');
     
@@ -124,6 +125,14 @@ class DatabaseService {
           FOREIGN KEY (foodId) REFERENCES foods (id) ON DELETE CASCADE
         )
       ''');
+    }
+    
+    if (oldVersion <= 3 && newVersion >= 4) {
+      // Add tags support to foods table
+      await db.execute('ALTER TABLE foods ADD COLUMN tags TEXT DEFAULT ""');
+      
+      // Ensure all existing records have an empty tags value
+      await db.execute('UPDATE foods SET tags = "" WHERE tags IS NULL');
     }
   }
 }

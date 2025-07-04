@@ -65,14 +65,7 @@ class AddFoodOptionsDialog extends StatelessWidget {
                 title: 'AI Quick Scan',
                 subtitle: 'Take a photo and let AI analyze the food',
                 icon: Icons.camera_alt_rounded,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary,
-                    Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                iconColor: Theme.of(context).colorScheme.primary,
                 onTap: () async {
                   Navigator.pop(context);
                   await Navigator.push(
@@ -93,14 +86,7 @@ class AddFoodOptionsDialog extends StatelessWidget {
                 title: 'From Inventory',
                 subtitle: 'Select from your saved foods or search database',
                 icon: Icons.inventory_2_rounded,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.secondary,
-                    Theme.of(context).colorScheme.secondary.withOpacity(0.8),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                iconColor: Theme.of(context).colorScheme.primary,
                 onTap: () async {
                   Navigator.pop(context);
                   await Navigator.push(
@@ -160,7 +146,7 @@ class AddFoodOptionsDialog extends StatelessWidget {
     required String title,
     required String subtitle,
     required IconData icon,
-    required LinearGradient gradient,
+    required Color iconColor,
     required VoidCallback onTap,
     required bool isTablet,
   }) {
@@ -184,23 +170,16 @@ class AddFoodOptionsDialog extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Modern icon container with gradient
+              // Modern icon container without glow
               Container(
                 padding: EdgeInsets.all(isTablet ? 12 : 10),
                 decoration: BoxDecoration(
-                  gradient: gradient,
+                  color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradient.colors.first.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Icon(
                   icon,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
                   size: isTablet ? 22 : 20,
                 ),
               ),

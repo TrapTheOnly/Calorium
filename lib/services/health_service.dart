@@ -85,11 +85,40 @@ class HealthService {
 
   /// Check if health permissions are granted
   Future<bool> hasPermissions() async {
-    if (!_isConfigured) return false;
+    if (!_isConfigured) {
+      debugPrint('HealthService not configured, initializing...');
+      await initialize();
+    }
+    
+    // First check stored permissions from SharedPreferences
+    await _checkStoredPermissions();
+    
+    // If we have stored permissions, verify they're still valid
+    if (_hasPermissions) {
+      try {
+        final bool? hasPerms = await _health.hasPermissions(_dataTypes);
+        final currentPerms = hasPerms ?? false;
+        
+        // If permissions were revoked, update stored state
+        if (!currentPerms) {
+          _hasPermissions = false;
+          await _storePermissionStatus(false);
+          debugPrint('Permissions were revoked, updated stored state');
+        }
+        
+        debugPrint('Has permissions (from stored): $_hasPermissions, verified: $currentPerms');
+        return _hasPermissions;
+      } catch (e) {
+        debugPrint('Error verifying permissions: $e');
+        return _hasPermissions; // Return stored value if verification fails
+      }
+    }
+    
+    // If no stored permissions, check directly with health plugin
     try {
       final bool? hasPerms = await _health.hasPermissions(_dataTypes);
       _hasPermissions = hasPerms ?? false;
-      debugPrint('Has permissions: $_hasPermissions');
+      debugPrint('Has permissions (direct check): $_hasPermissions');
       return _hasPermissions;
     } catch (e) {
       debugPrint('Error checking permissions: $e');

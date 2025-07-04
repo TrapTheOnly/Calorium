@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import "../models/log_entry.dart";
 import 'package:flutter/services.dart';
 import '../services/log_service.dart';
+import '../widgets/custom_alert.dart';
 
 class LogEntryScreen extends StatefulWidget {
   final Map<String, dynamic> food;
@@ -131,33 +132,23 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
     }
   }
 
-  Future<void> _deleteLog() async {
+  void _showDeleteConfirmation() async {
     if (!widget.editMode || widget.logId == null) return;
     
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Entry'),
-        content: Text('Are you sure you want to delete this ${widget.food['name']} entry?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await _logService.deleteLogEntry(widget.logId!);
-              if (mounted) {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context); // Return to log screen
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+    final bool confirm = await AlertHelper.showConfirmationAlert(
+      context,
+      title: 'Delete Entry',
+      message: 'Are you sure you want to delete this ${widget.food['name']} entry?',
+      confirmButtonText: 'Delete',
+      type: AlertType.error,
+    ) ?? false;
+
+    if (confirm) {
+      await _logService.deleteLogEntry(widget.logId!);
+      if (mounted) {
+        Navigator.pop(context); // Return to log screen
+      }
+    }
   }
 
   void _toggleInputMode(bool usePortions) {
@@ -589,9 +580,9 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _deleteLog,
+                      onPressed: _showDeleteConfirmation,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF4455),
+                        backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 20),
                         shape: RoundedRectangleBorder(

@@ -5,6 +5,7 @@ import 'package:openfoodfacts/openfoodfacts.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'screens/home_screen.dart';
 import 'utils/theme_provider.dart';
+import 'utils/health_permission_provider.dart';
 import 'services/scheduler_service.dart';
 
 // Import debug service for easy access during development
@@ -31,8 +32,11 @@ void main() async {
   await SchedulerService.setupScheduledNotifications();
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => HealthPermissionProvider()),
+      ],
       child: const MyApp(),
     ),
   );
