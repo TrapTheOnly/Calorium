@@ -88,7 +88,7 @@ CURRENT DAILY INTAKE ($currentDate):
 - Fat: ${currentFat.round()}g
 
 TIME CONTEXT:
-- Current time: ${hour}:00 (suggesting $mealTime)
+- Current time: $hour:00 (suggesting $mealTime)
 - Focus: $timeContext
 
 AVAILABLE INGREDIENTS:

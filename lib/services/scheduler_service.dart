@@ -576,7 +576,7 @@ class SchedulerService {
 
   /// Complete debug test suite (DEBUG ONLY)
   static Future<void> debugFullTestSuite() async {
-    print('\n' + '='*60);
+    print('\n${'='*60}');
     print('🧪 DEBUG: Starting full AI nutrition test suite...');
     print('='*60);
     
@@ -612,7 +612,7 @@ class SchedulerService {
     print('\n4️⃣  Checking scheduled notifications...');
     await debugShowScheduledNotifications();
     
-    print('\n' + '='*60);
+    print('\n${'='*60}');
     print('🎉 DEBUG: Test suite completed!');
     print('='*60 + '\n');
   }

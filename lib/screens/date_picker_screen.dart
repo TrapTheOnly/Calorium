@@ -4,7 +4,7 @@ import '../services/log_service.dart';
 import 'daily_log_screen.dart';
 
 class DatePickerScreen extends StatefulWidget {
-  const DatePickerScreen({Key? key}) : super(key: key);
+  const DatePickerScreen({super.key});
 
   @override
   State<DatePickerScreen> createState() => _DatePickerScreenState();
@@ -49,34 +49,65 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2025),
-    );
-    
-    if (picked != null && picked != selectedDate) {
-      setState(() {
-        selectedDate = picked;
-      });
-      
-      final dateStr = DateFormat('yyyy-MM-dd').format(picked);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DailyLogScreen(date: dateStr),
-        ),
+    try {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: selectedDate,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now().add(const Duration(days: 365)), // Allow future dates up to 1 year
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: Theme.of(context).colorScheme.copyWith(
+                primary: Theme.of(context).colorScheme.primary,
+                onPrimary: Theme.of(context).colorScheme.onPrimary,
+                surface: Theme.of(context).colorScheme.surface,
+                onSurface: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            child: child!,
+          );
+        },
       );
+      
+      if (picked != null) {
+        // Update selected date
+        setState(() {
+          selectedDate = picked;
+        });
+        
+        // Format the date consistently
+        final dateStr = DateFormat('yyyy-MM-dd').format(picked);
+        
+        // Navigate to daily log screen with the selected date
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DailyLogScreen(date: dateStr),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Show error message if something goes wrong
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting date: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -103,7 +134,7 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 24),
@@ -161,8 +192,19 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
               
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: ElevatedButton.icon(
                   onPressed: () => _selectDate(context),
+                  icon: Icon(
+                    Icons.calendar_today_rounded,
+                    size: 20,
+                  ),
+                  label: const Text(
+                    'Pick Another Date',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -171,13 +213,6 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                     elevation: 5,
-                  ),
-                  child: const Text(
-                    'Pick Another Date',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
               ),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/log_service.dart';
+import '../services/health_service.dart';
+import '../models/health_data.dart';
+import '../widgets/health_data_card.dart';
 import 'daily_log_screen.dart';
 import 'date_picker_screen.dart';
 import 'ai_meal_planner_screen.dart';
@@ -19,6 +22,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   double todayCal = 0;
   bool _hasSevenDaysData = false;
+  HealthData _healthData = HealthData.empty();
+  bool _hasHealthPermissions = false;
+  bool _isLoadingHealth = true;
   final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
   final String prettyToday = DateFormat.yMMMMd().format(DateTime.now());
   
@@ -27,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadTodayCalories();
     _checkSevenDaysData();
+    _initializeHealthData();
   }
   
   Future<void> _loadTodayCalories() async {
@@ -62,6 +69,56 @@ class _HomeScreenState extends State<HomeScreen> {
       _hasSevenDaysData = daysWithData >= 7;
     });
   }
+
+  Future<void> _initializeHealthData() async {
+    try {
+      final healthService = HealthService.instance;
+      final hasPermissions = await healthService.hasPermissions();
+      
+      if (hasPermissions) {
+        final healthData = await healthService.getTodayHealthData();
+        setState(() {
+          _healthData = healthData;
+          _hasHealthPermissions = true;
+          _isLoadingHealth = false;
+        });
+      } else {
+        setState(() {
+          _hasHealthPermissions = false;
+          _isLoadingHealth = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _hasHealthPermissions = false;
+        _isLoadingHealth = false;
+      });
+    }
+  }
+
+  Future<void> _requestHealthPermissions() async {
+    try {
+      final healthService = HealthService.instance;
+      final granted = await healthService.requestPermissions();
+      
+      if (granted) {
+        final healthData = await healthService.getTodayHealthData();
+        setState(() {
+          _healthData = healthData;
+          _hasHealthPermissions = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error requesting health permissions: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
   
   void _showQuickAddOptions() {
     AddFoodOptionsDialog.show(
@@ -76,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -89,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(
                   fontSize: 34, 
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 24),
@@ -172,6 +229,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               
+              const SizedBox(height: 24),
+
+              // Health Data Section
+              if (_isLoadingHealth)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (!_hasHealthPermissions)
+                HealthPermissionCard(
+                  onRequestPermissions: _requestHealthPermissions,
+                )
+              else
+                HealthDataCard(
+                  healthData: _healthData,
+                  showWorkoutSessions: false,
+                ),
+
               const SizedBox(height: 24),
               
               // Action Buttons

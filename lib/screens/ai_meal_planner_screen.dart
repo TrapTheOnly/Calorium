@@ -10,7 +10,7 @@ import 'custom_recipe_detail_screen.dart';
 import 'custom_recipes_screen.dart';
 
 class AiMealPlannerScreen extends StatefulWidget {
-  const AiMealPlannerScreen({Key? key}) : super(key: key);
+  const AiMealPlannerScreen({super.key});
 
   @override
   State<AiMealPlannerScreen> createState() => _AiMealPlannerScreenState();
@@ -22,7 +22,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
   // State management
   File? _scannedImage;
   Map<String, dynamic>? _scannedIngredients;
-  Map<String, String> _userPreferences = {};
+  final Map<String, String> _userPreferences = {};
   Map<String, dynamic>? _mealRecommendation;
   CustomRecipe? _generatedRecipe;
   
@@ -41,9 +41,9 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -55,7 +55,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
         title: Text(
           'AI Recipe Generator',
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onBackground,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -231,7 +231,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             Text(
               'Analyzing your ingredients...',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onBackground,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
@@ -271,7 +271,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -343,7 +343,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
               ),
             ),
           ),
-        )).toList(),
+        )),
         
         if (suggestions.isNotEmpty) ...[
           const SizedBox(height: 24),
@@ -385,7 +385,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                 ),
               ],
             ),
-          )).toList(),
+          )),
         ],
         
         const SizedBox(height: 24),
@@ -543,7 +543,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
                   },
                   selectedColor: Theme.of(context).colorScheme.primaryContainer,
                   checkmarkColor: Theme.of(context).colorScheme.primary,
-                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                   side: BorderSide(
                     color: isSelected 
                         ? Theme.of(context).colorScheme.primary 
@@ -573,7 +573,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             Text(
               'Creating your perfect meal',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onBackground,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
@@ -615,14 +615,14 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Recipe title with better text wrapping
-          Container(
+          SizedBox(
             width: double.infinity,
             child: Text(
               recipe['recipeName'],
               style: TextStyle(
                 fontSize: 24, 
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onBackground,
+                color: Theme.of(context).colorScheme.onSurface,
                 height: 1.2,
               ),
               textAlign: TextAlign.center,
@@ -632,7 +632,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
           ),
           const SizedBox(height: 12),
           // Description with better text wrapping
-          Container(
+          SizedBox(
             width: double.infinity,
             child: Text(
               recipe['description'],
@@ -815,7 +815,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             Text(
               'Saving your recipe...',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onBackground,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
@@ -850,7 +850,7 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
             style: TextStyle(
               fontSize: 24, 
               fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onBackground,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
             textAlign: TextAlign.center,
           ),

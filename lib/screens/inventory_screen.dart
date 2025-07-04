@@ -14,7 +14,7 @@ import 'custom_recipe_detail_screen.dart';
 class InventoryScreen extends StatefulWidget {
   final String? date;
 
-  const InventoryScreen({Key? key, this.date}) : super(key: key);
+  const InventoryScreen({super.key, this.date});
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -227,9 +227,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -260,7 +260,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onBackground,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -280,7 +280,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 24.0),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: TabBar(
@@ -829,7 +829,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
         backgroundColor: isSecondary 
-            ? Theme.of(context).colorScheme.surfaceVariant
+            ? Theme.of(context).colorScheme.surfaceContainerHighest
             : Theme.of(context).colorScheme.primary,
         foregroundColor: isSecondary 
             ? Theme.of(context).colorScheme.onSurfaceVariant

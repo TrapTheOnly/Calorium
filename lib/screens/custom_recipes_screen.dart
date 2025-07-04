@@ -6,7 +6,7 @@ import 'custom_recipe_detail_screen.dart';
 import 'ai_meal_planner_screen.dart';
 
 class CustomRecipesScreen extends StatefulWidget {
-  const CustomRecipesScreen({Key? key}) : super(key: key);
+  const CustomRecipesScreen({super.key});
 
   @override
   State<CustomRecipesScreen> createState() => _CustomRecipesScreenState();
@@ -73,9 +73,9 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -87,7 +87,7 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
         title: Text(
           'My Custom Recipes',
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onBackground,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -203,7 +203,7 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
             style: TextStyle(
               fontSize: 24, 
               fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onBackground,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),

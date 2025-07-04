@@ -1,4 +1,3 @@
-import 'package:sqflite/sqflite.dart';
 import '../models/log_entry.dart';
 import 'database_service.dart';
 

@@ -7,15 +7,21 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:provider/provider.dart';
 import 'package:calorie_tracker/main.dart';
+import 'package:calorie_tracker/utils/theme_provider.dart';
 
 void main() {
-  testWidgets('Calorium app loads', (WidgetTester tester) async {
+  testWidgets('App loads correctly', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const CalorieTrackerApp());
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => ThemeProvider(),
+        child: const MyApp(),
+      ),
+    );
 
-    // Basic widget test - this will need to be updated with actual app tests
+    // Verify that the app loads and contains the main components
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

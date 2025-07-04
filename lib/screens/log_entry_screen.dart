@@ -10,12 +10,12 @@ class LogEntryScreen extends StatefulWidget {
   final int? logId;
 
   const LogEntryScreen({
-    Key? key,
+    super.key,
     required this.food,
     required this.date,
     this.editMode = false,
     this.logId,
-  }) : super(key: key);
+  });
 
   @override
   State<LogEntryScreen> createState() => _LogEntryScreenState();
@@ -193,9 +193,9 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -223,7 +223,7 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onBackground,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -360,7 +360,7 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
                   margin: const EdgeInsets.only(bottom: 16.0),
                   height: 50,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: Stack(

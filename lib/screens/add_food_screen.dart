@@ -9,7 +9,7 @@ class AddFoodScreen extends StatefulWidget {
   final Food? food;
   final String? date;
 
-  const AddFoodScreen({Key? key, this.food, this.date}) : super(key: key);
+  const AddFoodScreen({super.key, this.food, this.date});
 
   @override
   State<AddFoodScreen> createState() => _AddFoodScreenState();
@@ -184,17 +184,25 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     if (_nameController.text.trim().isEmpty) return false;
     if (_caloriesController.text.isEmpty || 
         double.tryParse(_caloriesController.text) == null || 
-        double.tryParse(_caloriesController.text)! <= 0) return false;
+        double.tryParse(_caloriesController.text)! <= 0) {
+      return false;
+    }
     if (_portionSizeController.text.isEmpty || 
         double.tryParse(_portionSizeController.text) == null || 
-        double.tryParse(_portionSizeController.text)! <= 0) return false;
+        double.tryParse(_portionSizeController.text)! <= 0) {
+      return false;
+    }
     if (widget.date != null) {
       if (_usePortions && (_portionsController.text.isEmpty || 
           double.tryParse(_portionsController.text) == null || 
-          double.tryParse(_portionsController.text)! <= 0)) return false;
+          double.tryParse(_portionsController.text)! <= 0)) {
+        return false;
+      }
       if (!_usePortions && (_amountController.text.isEmpty || 
           double.tryParse(_amountController.text) == null || 
-          double.tryParse(_amountController.text)! <= 0)) return false;
+          double.tryParse(_amountController.text)! <= 0)) {
+        return false;
+      }
     }
     return true;
   }
@@ -324,7 +332,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   margin: const EdgeInsets.only(bottom: 16.0),
                   height: 50,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: Stack(
@@ -442,7 +450,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   ),
               ] else
                 _buildPrimaryButton(
-                  'Save' + (widget.date != null ? ' & Log Entry' : ''),
+                  'Save${widget.date != null ? ' & Log Entry' : ''}',
                   _saveAndLogNew,
                   disabled: !canSaveAndLog,
                 ),

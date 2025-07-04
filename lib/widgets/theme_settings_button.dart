@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../utils/theme_provider.dart';
 
 class ThemeSettingsButton extends StatefulWidget {
-  const ThemeSettingsButton({Key? key}) : super(key: key);
+  const ThemeSettingsButton({super.key});
 
   @override
   State<ThemeSettingsButton> createState() => _ThemeSettingsButtonState();
@@ -69,7 +69,7 @@ class _ThemeSettingsButtonState extends State<ThemeSettingsButton> with SingleTi
                 heroTag: 'system_theme',
                 backgroundColor: themeProvider.themeOption == ThemeOption.system 
                     ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.surfaceVariant,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 foregroundColor: themeProvider.themeOption == ThemeOption.system 
                     ? Theme.of(context).colorScheme.onPrimary 
                     : Theme.of(context).colorScheme.onSurfaceVariant,
@@ -96,7 +96,7 @@ class _ThemeSettingsButtonState extends State<ThemeSettingsButton> with SingleTi
                 heroTag: 'light_theme',
                 backgroundColor: themeProvider.themeOption == ThemeOption.light 
                     ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.surfaceVariant,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 foregroundColor: themeProvider.themeOption == ThemeOption.light 
                     ? Theme.of(context).colorScheme.onPrimary 
                     : Theme.of(context).colorScheme.onSurfaceVariant,
@@ -123,7 +123,7 @@ class _ThemeSettingsButtonState extends State<ThemeSettingsButton> with SingleTi
                 heroTag: 'dark_theme',
                 backgroundColor: themeProvider.themeOption == ThemeOption.dark 
                     ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.surfaceVariant,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 foregroundColor: themeProvider.themeOption == ThemeOption.dark 
                     ? Theme.of(context).colorScheme.onPrimary 
                     : Theme.of(context).colorScheme.onSurfaceVariant,

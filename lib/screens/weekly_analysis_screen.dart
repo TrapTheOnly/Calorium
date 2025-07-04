@@ -6,7 +6,7 @@ import '../services/nutrition_analysis_service.dart';
 class WeeklyAnalysisScreen extends StatefulWidget {
   final String weekStartDate;
 
-  const WeeklyAnalysisScreen({Key? key, required this.weekStartDate}) : super(key: key);
+  const WeeklyAnalysisScreen({super.key, required this.weekStartDate});
 
   @override
   State<WeeklyAnalysisScreen> createState() => _WeeklyAnalysisScreenState();
@@ -88,9 +88,9 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -118,14 +118,14 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               Text(
                 _weekDisplayText,
                 style: TextStyle(
                   fontSize: 16,
-                  color: Theme.of(context).colorScheme.onBackground.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
               const SizedBox(height: 32),

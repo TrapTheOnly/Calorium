@@ -1,5 +1,4 @@
  import '../models/custom_recipe.dart';
-import '../models/food.dart';
 import 'database_service.dart';
 
 class CustomRecipeService {

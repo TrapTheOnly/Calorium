@@ -255,7 +255,7 @@ class DebugService {
   static void help() {
     if (!kDebugMode) return;
     
-    print('\n' + '='*60);
+    print('\n${'='*60}');
     print('🧪 DEBUG SERVICE - Available Commands');
     print('='*60);
     print('\n📱 QUICK NOTIFICATIONS:');

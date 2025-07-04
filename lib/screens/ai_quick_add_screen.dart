@@ -13,7 +13,7 @@ import 'settings_screen.dart';
 class AiQuickAddScreen extends StatefulWidget {
   final String date;
 
-  const AiQuickAddScreen({Key? key, required this.date}) : super(key: key);
+  const AiQuickAddScreen({super.key, required this.date});
 
   @override
   State<AiQuickAddScreen> createState() => _AiQuickAddScreenState();
@@ -261,9 +261,9 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -290,7 +290,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
                 style: TextStyle(
                   fontSize: 34,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
@@ -344,7 +344,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
           width: double.infinity,
           height: 200,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
@@ -618,7 +618,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -662,7 +662,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -732,7 +732,7 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

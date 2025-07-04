@@ -8,7 +8,7 @@ import '../widgets/nutrition_summary_card.dart';
 class AddCompoundScreen extends StatefulWidget {
   final Food? food;
 
-  const AddCompoundScreen({Key? key, this.food}) : super(key: key);
+  const AddCompoundScreen({super.key, this.food});
 
   @override
   State<AddCompoundScreen> createState() => _AddCompoundScreenState();
@@ -124,7 +124,7 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
     double weight = 0, cal = 0, fat = 0, carb = 0, prot = 0;
     
     for (var comp in components) {
-      if (comp == null || comp['food'] == null) continue;
+      if (comp['food'] == null) continue;
       final food = comp['food'] as Food;
       final amount = comp['amount'] as double;
       
@@ -228,7 +228,9 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
   void dispose() {
     _nameController.dispose();
     _searchController.dispose();
-    _amountControllers.values.forEach((controller) => controller.dispose());
+    for (var controller in _amountControllers.values) {
+      controller.dispose();
+    }
     
     super.dispose();
   }
@@ -236,9 +238,9 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -265,7 +267,7 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 24),

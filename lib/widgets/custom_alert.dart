@@ -11,14 +11,14 @@ class CustomAlert extends StatelessWidget {
   final VoidCallback? onActionPressed;
 
   const CustomAlert({
-    Key? key,
+    super.key,
     required this.title,
     this.message,
     this.type = AlertType.info,
     this.onClose,
     this.actionButtonText,
     this.onActionPressed,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

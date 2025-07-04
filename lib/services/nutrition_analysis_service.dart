@@ -298,7 +298,7 @@ USER PROFILE:
 - Goals: $goals
 - Daily Targets: ${macroTargets != null ? 'Protein: ${macroTargets['protein']}g, Carbs: ${macroTargets['carbs']}g, Fat: ${macroTargets['fat']}g' : 'Not set'}
 
-WEEKLY DATA (${weekStartDate} to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
+WEEKLY DATA ($weekStartDate to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
 ${weeklyData.map((day) => '${day['dayName']}: ${day['calories']}kcal, ${day['protein']}g protein, ${day['carbs']}g carbs, ${day['fat']}g fat (${day['foodsCount']} foods)').join('\n')}
 
 TASK: Provide a comprehensive weekly analysis as a JSON object:

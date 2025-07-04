@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
+import '../models/health_data.dart';
 import '../models/log_entry.dart';
 import '../services/log_service.dart';
-import 'log_entry_screen.dart';
-import 'settings_screen.dart';
-import '../widgets/nutrition_summary_card.dart';
+import '../services/health_service.dart';
+import '../widgets/enhanced_nutrition_summary_card.dart';
+import '../widgets/health_data_card.dart';
 import '../widgets/ai_suggestions_card.dart';
 import '../widgets/add_food_options_dialog.dart';
+import 'log_entry_screen.dart';
+import 'settings_screen.dart';
 
 class DailyLogScreen extends StatefulWidget {
   final String date;
 
-  const DailyLogScreen({Key? key, required this.date}) : super(key: key);
+  const DailyLogScreen({super.key, required this.date});
 
   @override
   State<DailyLogScreen> createState() => _DailyLogScreenState();
@@ -21,12 +25,15 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
   List<LogEntry> entries = [];
   final LogService _logService = LogService();
   late final String prettyDate;
+  HealthData _healthData = HealthData.empty();
+  bool _hasHealthPermissions = false;
 
   @override
   void initState() {
     super.initState();
     prettyDate = DateFormat.yMMMMd().format(DateTime.parse(widget.date));
     _loadEntries();
+    _initializeHealthData();
   }
 
   Future<void> _loadEntries() async {
@@ -34,6 +41,53 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
     setState(() {
       entries = loadedEntries;
     });
+  }
+
+  Future<void> _initializeHealthData() async {
+    try {
+      final healthService = HealthService.instance;
+      final hasPermissions = await healthService.hasPermissions();
+      
+      if (hasPermissions) {
+        final healthData = await healthService.getHealthDataForDate(DateTime.parse(widget.date));
+        setState(() {
+          _healthData = healthData;
+          _hasHealthPermissions = true;
+        });
+      } else {
+        setState(() {
+          _hasHealthPermissions = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _hasHealthPermissions = false;
+      });
+    }
+  }
+
+  Future<void> _requestHealthPermissions() async {
+    try {
+      final healthService = HealthService.instance;
+      final granted = await healthService.requestPermissions();
+      
+      if (granted) {
+        final healthData = await healthService.getHealthDataForDate(DateTime.parse(widget.date));
+        setState(() {
+          _healthData = healthData;
+          _hasHealthPermissions = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error requesting health permissions: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
   }
 
   Map<String, double> get totals {
@@ -66,21 +120,21 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
   }
 
   void _showAddEntryOptions() {
-    AddFoodOptionsDialog.show(
-      context,
-      date: widget.date,
-      title: 'Add Food Entry',
-      subtitle: 'Choose how you want to add food to your log',
-      onComplete: _loadEntries,
+    showDialog(
+      context: context,
+      builder: (context) => AddFoodOptionsDialog(
+        date: widget.date,
+        onComplete: _loadEntries,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -108,14 +162,14 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               Text(
                 prettyDate,
                 style: TextStyle(
                   fontSize: 16,
-                  color: Theme.of(context).colorScheme.onBackground,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 28),
@@ -126,15 +180,17 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Totals card
-                      NutritionSummaryCard(
+                      // Enhanced Nutrition Summary with Health Integration
+                      EnhancedNutritionSummaryCard(
                         nutritionData: {
                           'cal': totals['cal']!,
                           'prot': totals['prot']!,
                           'fat': totals['fat']!,
                           'carb': totals['carb']!,
                         },
+                        healthData: _hasHealthPermissions ? _healthData : null,
                         onSetTargetsTap: _navigateToSettings,
+                        onHealthPermissionTap: !_hasHealthPermissions ? _requestHealthPermissions : null,
                       ),
                       
                       // AI Suggestions Card
@@ -148,7 +204,7 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onBackground,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -159,7 +215,7 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(32),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
@@ -285,7 +341,7 @@ class _DailyLogScreenState extends State<DailyLogScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                '${(entry.calories! * entry.amount / 100).toStringAsFixed(0)}',
+                                                (entry.calories! * entry.amount / 100).toStringAsFixed(0),
                                                 style: TextStyle(
                                                   fontSize: 18,
                                                   fontWeight: FontWeight.bold,

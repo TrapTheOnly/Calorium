@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId = "com.gico.calorium"
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = 2
         versionName = "1.1.0"  // New version name

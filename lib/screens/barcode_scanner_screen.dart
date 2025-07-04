@@ -107,10 +107,10 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         title: Text('Scan Barcode', 
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onBackground,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         actions: [

@@ -7,10 +7,10 @@ class NutritionSummaryCard extends StatefulWidget {
   final VoidCallback? onSetTargetsTap;
 
   const NutritionSummaryCard({
-    Key? key,
+    super.key,
     required this.nutritionData,
     this.onSetTargetsTap,
-  }) : super(key: key);
+  });
 
   @override
   _NutritionSummaryCardState createState() => _NutritionSummaryCardState();
@@ -70,7 +70,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
               width: 1,
             ),
           ),
-          child: Container(
+          child: SizedBox(
             height: 150,
             child: const Center(child: CircularProgressIndicator()),
           ),
@@ -193,7 +193,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                     _buildNutrientItem(
                       context,
                       'Calories',
-                      '${widget.nutritionData['cal']?.toStringAsFixed(0) ?? '0'}',
+                      widget.nutritionData['cal']?.toStringAsFixed(0) ?? '0',
                       'kcal',
                       Icons.local_fire_department,
                       Colors.orange,
@@ -201,7 +201,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                     _buildNutrientItem(
                       context,
                       'Protein',
-                      '${widget.nutritionData['prot']?.toStringAsFixed(1) ?? '0.0'}',
+                      widget.nutritionData['prot']?.toStringAsFixed(1) ?? '0.0',
                       'g',
                       Icons.fitness_center,
                       Colors.red,
@@ -209,7 +209,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                     _buildNutrientItem(
                       context,
                       'Carbs',
-                      '${widget.nutritionData['carb']?.toStringAsFixed(1) ?? '0.0'}',
+                      widget.nutritionData['carb']?.toStringAsFixed(1) ?? '0.0',
                       'g',
                       Icons.grain,
                       Colors.amber,
@@ -217,7 +217,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
                     _buildNutrientItem(
                       context,
                       'Fat',
-                      '${widget.nutritionData['fat']?.toStringAsFixed(1) ?? '0.0'}',
+                      widget.nutritionData['fat']?.toStringAsFixed(1) ?? '0.0',
                       'g',
                       Icons.opacity,
                       Colors.purple,
@@ -289,7 +289,7 @@ class _NutritionSummaryCardState extends State<NutritionSummaryCard> {
             Container(
               height: 10,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(5),
               ),
             ),

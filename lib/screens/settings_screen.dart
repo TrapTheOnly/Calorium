@@ -8,7 +8,7 @@ import '../services/debug_service.dart';
 import '../widgets/custom_alert.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -255,9 +255,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return WillPopScope(
       onWillPop: _showUnsavedChangesDialog,
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.background,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           elevation: 0,
           leading: IconButton(
             icon: Icon(
@@ -277,7 +277,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'Settings',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onBackground,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -303,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : Text(
                   'Settings',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onBackground,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -359,7 +359,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onBackground,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -367,7 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'Customize your nutrition tracking experience',
                       style: TextStyle(
                         fontSize: 16,
-                        color: Theme.of(context).colorScheme.onBackground.withOpacity(0.6),
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                     const SizedBox(height: 32),
@@ -549,7 +549,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.surfaceVariant,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -619,7 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(20),
@@ -664,7 +664,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 padding: const EdgeInsets.all(20),
@@ -712,7 +712,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // Height - Full Width
         Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 padding: const EdgeInsets.all(20),
@@ -946,7 +946,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -1081,7 +1081,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // API Key Input
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(20),
@@ -1320,7 +1320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -1691,7 +1691,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(

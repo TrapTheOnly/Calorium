@@ -8,7 +8,7 @@ import '../widgets/custom_alert.dart';
 class CustomRecipeDetailScreen extends StatefulWidget {
   final CustomRecipe recipe;
 
-  const CustomRecipeDetailScreen({Key? key, required this.recipe}) : super(key: key);
+  const CustomRecipeDetailScreen({super.key, required this.recipe});
 
   @override
   State<CustomRecipeDetailScreen> createState() => _CustomRecipeDetailScreenState();
@@ -20,7 +20,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   final TextEditingController _servingsController = TextEditingController();
   final TextEditingController _newTagController = TextEditingController();
   bool _isLogging = false;
-  bool _isEditingDifficulty = false;
+  final bool _isEditingDifficulty = false;
   String _tempDifficulty = '';
 
   @override
@@ -41,9 +41,9 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -55,7 +55,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         title: Text(
           _recipe.name,
           style: TextStyle(
-            color: Theme.of(context).colorScheme.onBackground,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -757,7 +757,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
       AlertHelper.showSuccessAlert(
         context,
         title: 'Recipe Logged Successfully!',
-        message: '${servings} serving(s) of ${_recipe.name} logged to your daily nutrition.',
+        message: '$servings serving(s) of ${_recipe.name} logged to your daily nutrition.',
         actionButtonText: 'View Today',
         onActionPressed: () {
           Navigator.of(context).pop(); // Close the alert
