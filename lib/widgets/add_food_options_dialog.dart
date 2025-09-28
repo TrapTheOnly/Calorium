@@ -161,7 +161,7 @@ class AddFoodOptionsDialog extends StatelessWidget {
           width: double.infinity,
           padding: EdgeInsets.all(isTablet ? 18 : 16),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
@@ -246,7 +246,7 @@ class AddFoodOptionsDialog extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
         ),
         child: Text(
           'Cancel',

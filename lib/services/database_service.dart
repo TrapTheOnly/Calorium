@@ -4,27 +4,27 @@ import 'package:path/path.dart';
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   static DatabaseService get instance => _instance;
-  
+
   DatabaseService._internal();
-  
+
   Database? _database;
-  
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
-  
+
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'calories.db');
     return await openDatabase(
       path,
-      version: 4, // Increased version for tags support
+      version: 5, // Increased version for fasting timestamps
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
   }
-  
+
   Future<void> _createDatabase(Database db, int version) async {
     await db.execute('''
       CREATE TABLE foods (
@@ -41,7 +41,7 @@ class DatabaseService {
         tags TEXT DEFAULT ''
       )
     ''');
-    
+
     await db.execute('''
       CREATE TABLE logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,10 +49,11 @@ class DatabaseService {
         amount REAL,
         portions REAL DEFAULT 1.0,
         date TEXT,
+        loggedAt INTEGER,
         FOREIGN KEY(foodId) REFERENCES foods(id)
       )
     ''');
-    
+
     await db.execute('''
       CREATE TABLE components (
         recipeId INTEGER,
@@ -90,14 +91,22 @@ class DatabaseService {
     ''');
   }
 
-  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+  Future<void> _upgradeDatabase(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     if (oldVersion == 1 && newVersion >= 2) {
-      await db.execute('ALTER TABLE foods ADD COLUMN defaultPortionSize REAL DEFAULT 100.0');
-      await db.execute('ALTER TABLE foods ADD COLUMN portionDescription TEXT DEFAULT "100g"');
-      
+      await db.execute(
+        'ALTER TABLE foods ADD COLUMN defaultPortionSize REAL DEFAULT 100.0',
+      );
+      await db.execute(
+        'ALTER TABLE foods ADD COLUMN portionDescription TEXT DEFAULT "100g"',
+      );
+
       await db.execute('ALTER TABLE logs ADD COLUMN portions REAL DEFAULT 1.0');
     }
-    
+
     if (oldVersion <= 2 && newVersion >= 3) {
       // Add custom recipes table
       await db.execute('''
@@ -126,13 +135,22 @@ class DatabaseService {
         )
       ''');
     }
-    
+
     if (oldVersion <= 3 && newVersion >= 4) {
       // Add tags support to foods table
       await db.execute('ALTER TABLE foods ADD COLUMN tags TEXT DEFAULT ""');
-      
+
       // Ensure all existing records have an empty tags value
       await db.execute('UPDATE foods SET tags = "" WHERE tags IS NULL');
+    }
+
+    if (oldVersion <= 4 && newVersion >= 5) {
+      await db.execute('ALTER TABLE logs ADD COLUMN loggedAt INTEGER');
+      await db.execute('''
+        UPDATE logs
+        SET loggedAt = CAST(strftime('%s', date || ' 12:00:00') AS INTEGER) * 1000
+        WHERE loggedAt IS NULL AND date IS NOT NULL
+      ''');
     }
   }
 }

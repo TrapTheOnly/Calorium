@@ -7,10 +7,10 @@ class HealthDataCard extends StatelessWidget {
   final bool showWorkoutSessions;
 
   const HealthDataCard({
-    Key? key,
+    super.key,
     required this.healthData,
     this.showWorkoutSessions = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -57,13 +57,6 @@ class HealthDataCard extends StatelessWidget {
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          ),
-                        ),
-                        Text(
-                          'From Samsung Health',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
                           ),
                         ),
                       ],
@@ -334,7 +327,7 @@ class HealthDataCard extends StatelessWidget {
               ],
             ),
           ),
-        ).toList(),
+        ),
       ],
     );
   }
@@ -406,9 +399,9 @@ class HealthPermissionCard extends StatelessWidget {
   final VoidCallback onRequestPermissions;
 
   const HealthPermissionCard({
-    Key? key,
+    super.key,
     required this.onRequestPermissions,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +445,7 @@ class HealthPermissionCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Allow access to Samsung Health data to see your workout time, calories burned, and step count',
+                'Allow access to health data to see your workout time, calories burned, and step count',
                 style: TextStyle(
                   fontSize: 14,
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),

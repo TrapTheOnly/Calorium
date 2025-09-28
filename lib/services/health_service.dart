@@ -308,7 +308,7 @@ class HealthService {
       workoutSessions: workoutSessions,
     );
 
-    debugPrint('Final health data for ${targetDateString}: Steps: $totalSteps, Calories: ${totalCaloriesBurned.round()}, Workout time: $totalWorkoutTime min, Sessions: ${workoutSessions.length}, Distance: ${(totalDistance/1000).toStringAsFixed(2)} km');
+    debugPrint('Final health data for $targetDateString: Steps: $totalSteps, Calories: ${totalCaloriesBurned.round()}, Workout time: $totalWorkoutTime min, Sessions: ${workoutSessions.length}, Distance: ${(totalDistance/1000).toStringAsFixed(2)} km');
     
     return healthData;
   }

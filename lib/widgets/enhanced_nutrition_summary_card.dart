@@ -274,7 +274,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -325,7 +325,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
         Container(
           height: 16,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
             borderRadius: BorderRadius.circular(8),
           ),
           child: ClipRRect(
@@ -336,7 +336,7 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),

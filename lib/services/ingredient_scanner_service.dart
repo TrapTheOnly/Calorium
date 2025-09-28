@@ -4,14 +4,33 @@ import 'package:http/http.dart' as http;
 import 'settings_service.dart';
 
 class IngredientScannerService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+  static const String _apiHost = 'generativelanguage.googleapis.com';
+  static const String _pathPrefix = '/v1beta/models/';
+  static const String _generateContentSuffix = ':generateContent';
+
+  static Future<Uri> _buildRequestUri(
+    String apiKey, {
+    String fallbackModel = 'gemini-1.5-flash-latest',
+  }) async {
+    final model = await SettingsService.getGeminiModel(
+      fallbackModel: fallbackModel,
+    );
+    final normalized = SettingsService.normalizeGeminiModelName(model);
+    return Uri.https(
+      _apiHost,
+      '$_pathPrefix$normalized$_generateContentSuffix',
+      {'key': apiKey},
+    );
+  }
 
   /// Analyze image to identify available ingredients
   static Future<Map<String, dynamic>?> scanIngredients(File imageFile) async {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
 
       final imageBytes = await imageFile.readAsBytes();
@@ -62,30 +81,30 @@ GUIDELINES:
 - Don't make assumptions about ingredients not clearly visible
 
 Focus on ingredients that would be useful for meal preparation. Ignore non-food items.
-"""
+""",
               },
               {
-                "inline_data": {
-                  "mime_type": "image/jpeg",
-                  "data": base64Image
-                }
-              }
-            ]
-          }
+                "inline_data": {"mime_type": "image/jpeg", "data": base64Image},
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.3,
           "topK": 20,
           "topP": 0.9,
-          "maxOutputTokens": 1000
-        }
+          "maxOutputTokens": 1000,
+        },
       };
 
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-1.5-flash-latest',
+      );
+
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
 
@@ -96,21 +115,21 @@ Focus on ingredients that would be useful for meal preparation. Ignore non-food 
         if (text != null) {
           try {
             String cleanedText = text.trim();
-            
+
             if (cleanedText.startsWith('```json')) {
               cleanedText = cleanedText.substring(7);
             } else if (cleanedText.startsWith('```')) {
               cleanedText = cleanedText.substring(3);
             }
-            
+
             if (cleanedText.endsWith('```')) {
               cleanedText = cleanedText.substring(0, cleanedText.length - 3);
             }
-            
+
             cleanedText = cleanedText.trim();
-            
+
             final scanResult = json.decode(cleanedText);
-            
+
             // Validate the response structure
             if (scanResult['ingredients'] is List &&
                 scanResult['suggestions'] is List &&
@@ -139,7 +158,9 @@ Focus on ingredients that would be useful for meal preparation. Ignore non-food 
   }
 
   /// Categorize ingredients by type for better organization
-  static Map<String, List<Map<String, dynamic>>> categorizeIngredients(List<dynamic> ingredients) {
+  static Map<String, List<Map<String, dynamic>>> categorizeIngredients(
+    List<dynamic> ingredients,
+  ) {
     final Map<String, List<Map<String, dynamic>>> categorized = {
       'produce': [],
       'protein': [],
@@ -161,22 +182,26 @@ Focus on ingredients that would be useful for meal preparation. Ignore non-food 
 
   /// Filter ingredients by freshness
   static List<Map<String, dynamic>> filterByFreshness(
-    List<dynamic> ingredients, 
-    List<String> acceptableFreshness
+    List<dynamic> ingredients,
+    List<String> acceptableFreshness,
   ) {
     return ingredients
-        .where((ingredient) => acceptableFreshness.contains(ingredient['freshness']))
+        .where(
+          (ingredient) => acceptableFreshness.contains(ingredient['freshness']),
+        )
         .cast<Map<String, dynamic>>()
         .toList();
   }
 
   /// Get ingredients with high confidence only
   static List<Map<String, dynamic>> getHighConfidenceIngredients(
-    List<dynamic> ingredients, 
-    {double minConfidence = 0.7}
-  ) {
+    List<dynamic> ingredients, {
+    double minConfidence = 0.7,
+  }) {
     return ingredients
-        .where((ingredient) => (ingredient['confidence'] as double) >= minConfidence)
+        .where(
+          (ingredient) => (ingredient['confidence'] as double) >= minConfidence,
+        )
         .cast<Map<String, dynamic>>()
         .toList();
   }

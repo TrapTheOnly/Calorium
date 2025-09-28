@@ -3,6 +3,8 @@ import 'dart:convert';
 
 class SettingsService {
   static const String _apiKeyKey = 'gemini_api_key';
+  static const String _geminiModelKey = 'gemini_model';
+  static const String _defaultGeminiModel = 'gemini-1.5-flash-latest';
   static const String _themeKey = 'theme_mode';
   static const String _calorieTargetKey = 'calorie_target';
   static const String _ageKey = 'age';
@@ -38,6 +40,37 @@ class SettingsService {
   static Future<bool> hasGeminiApiKey() async {
     final apiKey = await getGeminiApiKey();
     return apiKey != null && apiKey.isNotEmpty;
+  }
+
+  static String get defaultGeminiModel => _defaultGeminiModel;
+
+  static Future<void> setGeminiModel(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_geminiModelKey, normalizeGeminiModelName(model));
+  }
+
+  static Future<String> getGeminiModel({String? fallbackModel}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_geminiModelKey);
+    if (stored != null && stored.isNotEmpty) {
+      return normalizeGeminiModelName(stored);
+    }
+    return normalizeGeminiModelName(fallbackModel ?? _defaultGeminiModel);
+  }
+
+  static Future<String?> getSavedGeminiModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_geminiModelKey);
+    if (stored == null) return null;
+    return normalizeGeminiModelName(stored);
+  }
+
+  static String normalizeGeminiModelName(String model) {
+    final trimmed = model.trim();
+    if (trimmed.startsWith('models/')) {
+      return trimmed.substring(7);
+    }
+    return trimmed;
   }
 
   // Theme methods
@@ -123,12 +156,16 @@ class SettingsService {
   }
 
   // Manual macro targets (no AI calculation)
-  static Future<void> setMacroTargets(double protein, double carbs, double fat) async {
+  static Future<void> setMacroTargets(
+    double protein,
+    double carbs,
+    double fat,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_proteinTargetKey, protein);
     await prefs.setDouble(_carbTargetKey, carbs);
     await prefs.setDouble(_fatTargetKey, fat);
-    
+
     // Calculate and set calorie target based on macros
     final calories = (protein * 4) + (carbs * 4) + (fat * 9);
     await prefs.setDouble(_calorieTargetKey, calories);
@@ -142,11 +179,7 @@ class SettingsService {
     final carbs = prefs.getDouble(_carbTargetKey);
 
     if (protein != null && fat != null && carbs != null) {
-      return {
-        'protein': protein,
-        'fat': fat,
-        'carbs': carbs,
-      };
+      return {'protein': protein, 'fat': fat, 'carbs': carbs};
     }
 
     return null;
@@ -163,15 +196,23 @@ class SettingsService {
   }
 
   // AI Nutrition Analysis methods
-  static Future<void> setDailyAiSuggestions(String date, List<String> suggestions) async {
+  static Future<void> setDailyAiSuggestions(
+    String date,
+    List<String> suggestions,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('${_dailyAiSuggestionsKey}_$date', json.encode(suggestions));
+    await prefs.setString(
+      '${_dailyAiSuggestionsKey}_$date',
+      json.encode(suggestions),
+    );
   }
 
   static Future<List<String>?> getDailyAiSuggestions(String date) async {
     final prefs = await SharedPreferences.getInstance();
-    final suggestionsString = prefs.getString('${_dailyAiSuggestionsKey}_$date');
-    
+    final suggestionsString = prefs.getString(
+      '${_dailyAiSuggestionsKey}_$date',
+    );
+
     if (suggestionsString != null) {
       try {
         final List<dynamic> suggestionsList = json.decode(suggestionsString);
@@ -181,7 +222,7 @@ class SettingsService {
         return null;
       }
     }
-    
+
     return null;
   }
 
@@ -205,15 +246,21 @@ class SettingsService {
     return prefs.getString(_aiQuoteKey);
   }
 
-  static Future<void> setWeeklyAnalysis(String weekKey, Map<String, dynamic> analysis) async {
+  static Future<void> setWeeklyAnalysis(
+    String weekKey,
+    Map<String, dynamic> analysis,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('${_weeklyAnalysisKey}_$weekKey', json.encode(analysis));
+    await prefs.setString(
+      '${_weeklyAnalysisKey}_$weekKey',
+      json.encode(analysis),
+    );
   }
 
   static Future<Map<String, dynamic>?> getWeeklyAnalysis(String weekKey) async {
     final prefs = await SharedPreferences.getInstance();
     final analysisString = prefs.getString('${_weeklyAnalysisKey}_$weekKey');
-    
+
     if (analysisString != null) {
       try {
         return json.decode(analysisString) as Map<String, dynamic>;
@@ -222,7 +269,7 @@ class SettingsService {
         return null;
       }
     }
-    
+
     return null;
   }
-} 
+}

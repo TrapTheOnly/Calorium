@@ -4,19 +4,48 @@ import 'package:http/http.dart' as http;
 import 'settings_service.dart';
 
 class AiService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-  
-  static Future<Map<String, dynamic>?> analyzeFood(File imageFile, {String? userPrompt}) async {
+  static const String _apiHost = 'generativelanguage.googleapis.com';
+  static const String _generateContentPathPrefix = '/v1beta/models/';
+  static const String _generateContentSuffix = ':generateContent';
+
+  static Uri _buildGenerateContentUri(String model, String apiKey) {
+    final normalized = SettingsService.normalizeGeminiModelName(model);
+    final path =
+        '$_generateContentPathPrefix$normalized$_generateContentSuffix';
+    return Uri.https(_apiHost, path, {'key': apiKey});
+  }
+
+  static Future<Uri> _buildRequestUri(
+    String apiKey, {
+    required String fallbackModel,
+  }) async {
+    final model = await SettingsService.getGeminiModel(
+      fallbackModel: fallbackModel,
+    );
+    return _buildGenerateContentUri(model, apiKey);
+  }
+
+  static Future<Map<String, dynamic>?> analyzeFood(
+    File imageFile, {
+    String? userPrompt,
+  }) async {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
-      
+
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-2.0-flash',
+      );
+
       // Read image file as bytes
       final imageBytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(imageBytes);
-      
+
       // Create the analysis prompt with optional user input
       String analysisPrompt = """
 Analyze this food image and provide detailed nutritional information with accurate portion estimation.
@@ -74,117 +103,121 @@ EXAMPLE REASONING:
 - Pasta on a dinner plate: defaultPortionSize = 185 (total serving), portionDescription = "1 serving (185g)"
 - 2 cookies: defaultPortionSize = 25 (weight of 1 cookie), portionDescription = "1 cookie (25g)"
 """;
-      
+
       // Prepare the request body
       final requestBody = {
         "contents": [
           {
             "parts": [
+              {"text": analysisPrompt},
               {
-                "text": analysisPrompt
+                "inline_data": {"mime_type": "image/jpeg", "data": base64Image},
               },
-              {
-                "inline_data": {
-                  "mime_type": "image/jpeg",
-                  "data": base64Image
-                }
-              }
-            ]
-          }
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.1,
           "topK": 1,
           "topP": 1,
-          "maxOutputTokens": 512
-        }
+          "maxOutputTokens": 512,
+        },
       };
-      
+
       // Make the API request
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
-      
+
       print('AI Food Analysis Response Status: ${response.statusCode}');
       print('AI Food Analysis Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         // Improved error handling and type safety
         if (data == null || data is! Map<String, dynamic>) {
           throw Exception('Invalid response structure from API');
         }
-        
+
         final candidates = data['candidates'];
         if (candidates == null || candidates is! List || candidates.isEmpty) {
           throw Exception('No candidates in API response');
         }
-        
+
         final firstCandidate = candidates[0];
         if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
           throw Exception('Invalid candidate structure');
         }
-        
+
         final content = firstCandidate['content'];
         if (content == null || content is! Map<String, dynamic>) {
           throw Exception('No content in candidate');
         }
-        
+
         final parts = content['parts'];
         if (parts == null || parts is! List || parts.isEmpty) {
           throw Exception('No parts in content');
         }
-        
+
         final firstPart = parts[0];
         if (firstPart == null || firstPart is! Map<String, dynamic>) {
           throw Exception('Invalid part structure');
         }
-        
+
         final text = firstPart['text'];
         if (text == null || text is! String) {
           throw Exception('No text in response part');
         }
-        
+
         // Parse the JSON response from Gemini
         try {
           // Clean the response by removing markdown code block formatting
           String cleanedText = text.trim();
-          
+
           // Remove markdown code block markers if present
           if (cleanedText.startsWith('```json')) {
             cleanedText = cleanedText.substring(7); // Remove '```json'
           } else if (cleanedText.startsWith('```')) {
             cleanedText = cleanedText.substring(3); // Remove '```'
           }
-          
+
           if (cleanedText.endsWith('```')) {
-            cleanedText = cleanedText.substring(0, cleanedText.length - 3); // Remove ending '```'
+            cleanedText = cleanedText.substring(
+              0,
+              cleanedText.length - 3,
+            ); // Remove ending '```'
           }
-          
+
           cleanedText = cleanedText.trim();
-          
+
           print('Cleaned AI Food Response: $cleanedText');
-          
+
           final nutritionData = json.decode(cleanedText);
-          
+
           // Validate the nutrition data structure
           if (nutritionData is! Map<String, dynamic>) {
             throw Exception('Nutrition data is not a valid object');
           }
-          
+
           // Ensure required fields exist
-          final requiredFields = ['name', 'calories', 'protein', 'carbs', 'fat', 'defaultPortionSize', 'portionDescription'];
+          final requiredFields = [
+            'name',
+            'calories',
+            'protein',
+            'carbs',
+            'fat',
+            'defaultPortionSize',
+            'portionDescription',
+          ];
           for (String field in requiredFields) {
             if (!nutritionData.containsKey(field)) {
               throw Exception('Missing required field: $field');
             }
           }
-          
+
           print('Successfully parsed nutrition data: $nutritionData');
           return nutritionData;
         } catch (e) {
@@ -196,7 +229,8 @@ EXAMPLE REASONING:
         String errorMessage = 'Unknown error';
         try {
           final errorData = json.decode(response.body);
-          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+          if (errorData is Map<String, dynamic> &&
+              errorData.containsKey('error')) {
             final error = errorData['error'];
             if (error is Map<String, dynamic> && error.containsKey('message')) {
               errorMessage = error['message'].toString();
@@ -224,9 +258,11 @@ EXAMPLE REASONING:
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
-      
+
       // Map activity levels to descriptive text
       String activityDescription = '';
       switch (activityLevel) {
@@ -237,15 +273,17 @@ EXAMPLE REASONING:
           activityDescription = 'Lightly active (light exercise 1-3 days/week)';
           break;
         case 'moderate':
-          activityDescription = 'Moderately active (moderate exercise 3-5 days/week)';
+          activityDescription =
+              'Moderately active (moderate exercise 3-5 days/week)';
           break;
         case 'very_active':
           activityDescription = 'Very active (hard exercise 6-7 days/week)';
           break;
         default:
-          activityDescription = 'Moderately active (moderate exercise 3-5 days/week)';
+          activityDescription =
+              'Moderately active (moderate exercise 3-5 days/week)';
       }
-      
+
       // Map goals to descriptive text
       String goalsDescription = '';
       switch (goals) {
@@ -261,7 +299,7 @@ EXAMPLE REASONING:
         default:
           goalsDescription = 'Weight maintenance';
       }
-      
+
       // Prepare the request body
       final requestBody = {
         "contents": [
@@ -321,123 +359,124 @@ IMPORTANT: Respond with ONLY a valid JSON object in this exact format:
 The macro values must be precise decimals that add up to exactly $calorieTarget calories.
 Do not include any explanation field - only macros and tips.
 Ensure your activity level interpretation matches "$activityDescription" exactly.
-"""
-              }
-            ]
-          }
+""",
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.1,
           "topK": 1,
           "topP": 1,
-          "maxOutputTokens": 512
-        }
+          "maxOutputTokens": 512,
+        },
       };
-      
-      print('Sending AI macro request with data: ${{
-        'calories': calorieTarget,
-        'age': age,
-        'weight': weight,
-        'sex': sex,
-        'activity': activityDescription,
-        'goals': goalsDescription
-      }}');
-      
+
+      print(
+        'Sending AI macro request with data: ${{'calories': calorieTarget, 'age': age, 'weight': weight, 'sex': sex, 'activity': activityDescription, 'goals': goalsDescription}}',
+      );
+
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-2.0-flash',
+      );
+
       // Make the API request
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
-      
+
       print('AI macro response status: ${response.statusCode}');
       print('AI macro response body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         // Improved error handling and type safety for macro calculation
         if (data == null || data is! Map<String, dynamic>) {
           throw Exception('Invalid response structure from API');
         }
-        
+
         final candidates = data['candidates'];
         if (candidates == null || candidates is! List || candidates.isEmpty) {
           throw Exception('No candidates in API response');
         }
-        
+
         final firstCandidate = candidates[0];
         if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
           throw Exception('Invalid candidate structure');
         }
-        
+
         final content = firstCandidate['content'];
         if (content == null || content is! Map<String, dynamic>) {
           throw Exception('No content in candidate');
         }
-        
+
         final parts = content['parts'];
         if (parts == null || parts is! List || parts.isEmpty) {
           throw Exception('No parts in content');
         }
-        
+
         final firstPart = parts[0];
         if (firstPart == null || firstPart is! Map<String, dynamic>) {
           throw Exception('Invalid part structure');
         }
-        
+
         final text = firstPart['text'];
         if (text == null || text is! String) {
           throw Exception('No text in response part');
         }
-        
+
         print('AI macro response text: $text');
-        
+
         // Parse the JSON response from Gemini
         try {
           // Clean the response by removing markdown code block formatting
           String cleanedText = text.trim();
-          
+
           // Remove markdown code block markers if present
           if (cleanedText.startsWith('```json')) {
             cleanedText = cleanedText.substring(7);
           } else if (cleanedText.startsWith('```')) {
             cleanedText = cleanedText.substring(3);
           }
-          
+
           if (cleanedText.endsWith('```')) {
             cleanedText = cleanedText.substring(0, cleanedText.length - 3);
           }
-          
+
           cleanedText = cleanedText.trim();
           print('Cleaned AI macro response: $cleanedText');
-          
+
           final macroData = json.decode(cleanedText);
           print('Parsed macro data: $macroData');
-          
+
           // Validate the response structure
           if (macroData is Map<String, dynamic> &&
               macroData.containsKey('calories') &&
               macroData.containsKey('protein') &&
               macroData.containsKey('carbs') &&
               macroData.containsKey('fat')) {
-            
             // Ensure the calculated calories match the target within a small tolerance
             final protein = (macroData['protein'] as num).toDouble();
             final carbs = (macroData['carbs'] as num).toDouble();
             final fat = (macroData['fat'] as num).toDouble();
             final calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
-            
+
             print('AI provided macros: P:$protein C:$carbs F:$fat');
-            print('Calculated calories: $calculatedCalories, Target: $calorieTarget');
-            
+            print(
+              'Calculated calories: $calculatedCalories, Target: $calorieTarget',
+            );
+
             // Allow small rounding tolerance (within 5 calories)
             if ((calculatedCalories - calorieTarget).abs() <= 5.0) {
               return macroData;
             } else {
-              print('WARNING: AI macro calculations do not match calorie target');
+              print(
+                'WARNING: AI macro calculations do not match calorie target',
+              );
               // Still return the data but log the discrepancy
               return macroData;
             }
@@ -453,7 +492,8 @@ Ensure your activity level interpretation matches "$activityDescription" exactly
         String errorMessage = 'Unknown error';
         try {
           final errorData = json.decode(response.body);
-          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+          if (errorData is Map<String, dynamic> &&
+              errorData.containsKey('error')) {
             final error = errorData['error'];
             if (error is Map<String, dynamic> && error.containsKey('message')) {
               errorMessage = error['message'].toString();
@@ -479,17 +519,20 @@ Ensure your activity level interpretation matches "$activityDescription" exactly
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
-      
+
       // Read image file as bytes
       final imageBytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(imageBytes);
-      
+
       // Extract original portion info to preserve it
       final originalPortionSize = originalAnalysis['defaultPortionSize'] ?? 100;
-      final originalPortionDescription = originalAnalysis['portionDescription'] ?? '1 serving';
-      
+      final originalPortionDescription =
+          originalAnalysis['portionDescription'] ?? '1 serving';
+
       // Prepare the request body
       final requestBody = {
         "contents": [
@@ -523,110 +566,121 @@ IMPORTANT: You must respond with ONLY a valid JSON object in this exact format, 
 }
 
 Apply the user's correction to adjust the nutritional values per 100g (calories, protein, carbs, fat) but keep the portion size and description exactly the same as the original analysis. If they're mentioning modifications like "diet/low-fat" or "without rice", estimate the nutritional impact per 100g while maintaining the same portion weight.
-"""
+""",
               },
               {
-                "inline_data": {
-                  "mime_type": "image/jpeg",
-                  "data": base64Image
-                }
-              }
-            ]
-          }
+                "inline_data": {"mime_type": "image/jpeg", "data": base64Image},
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.1,
           "topK": 1,
           "topP": 1,
-          "maxOutputTokens": 512
-        }
+          "maxOutputTokens": 512,
+        },
       };
-      
+
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-2.0-flash',
+      );
+
       // Make the API request
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
-      
+
       print('AI Food Correction Response Status: ${response.statusCode}');
       print('AI Food Correction Response Body: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        
+
         // Similar parsing logic as the original method
         if (data == null || data is! Map<String, dynamic>) {
           throw Exception('Invalid response structure from API');
         }
-        
+
         final candidates = data['candidates'];
         if (candidates == null || candidates is! List || candidates.isEmpty) {
           throw Exception('No candidates in API response');
         }
-        
+
         final firstCandidate = candidates[0];
         if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
           throw Exception('Invalid candidate structure');
         }
-        
+
         final content = firstCandidate['content'];
         if (content == null || content is! Map<String, dynamic>) {
           throw Exception('No content in candidate');
         }
-        
+
         final parts = content['parts'];
         if (parts == null || parts is! List || parts.isEmpty) {
           throw Exception('No parts in content');
         }
-        
+
         final firstPart = parts[0];
         if (firstPart == null || firstPart is! Map<String, dynamic>) {
           throw Exception('Invalid part structure');
         }
-        
+
         final text = firstPart['text'];
         if (text == null || text is! String) {
           throw Exception('No text in response part');
         }
-        
+
         // Parse the JSON response from Gemini
         try {
           // Clean the response by removing markdown code block formatting
           String cleanedText = text.trim();
-          
+
           // Remove markdown code block markers if present
           if (cleanedText.startsWith('```json')) {
             cleanedText = cleanedText.substring(7); // Remove '```json'
           } else if (cleanedText.startsWith('```')) {
             cleanedText = cleanedText.substring(3); // Remove '```'
           }
-          
+
           if (cleanedText.endsWith('```')) {
-            cleanedText = cleanedText.substring(0, cleanedText.length - 3); // Remove ending '```'
+            cleanedText = cleanedText.substring(
+              0,
+              cleanedText.length - 3,
+            ); // Remove ending '```'
           }
-          
+
           cleanedText = cleanedText.trim();
-          
+
           print('Cleaned AI Food Correction Response: $cleanedText');
-          
+
           final nutritionData = json.decode(cleanedText);
-          
+
           // Validate the nutrition data structure
           if (nutritionData is! Map<String, dynamic>) {
             throw Exception('Nutrition data is not a valid object');
           }
-          
+
           // Ensure required fields exist
-          final requiredFields = ['name', 'calories', 'protein', 'carbs', 'fat', 'defaultPortionSize', 'portionDescription'];
+          final requiredFields = [
+            'name',
+            'calories',
+            'protein',
+            'carbs',
+            'fat',
+            'defaultPortionSize',
+            'portionDescription',
+          ];
           for (String field in requiredFields) {
             if (!nutritionData.containsKey(field)) {
               throw Exception('Missing required field: $field');
             }
           }
-          
+
           print('Successfully parsed corrected nutrition data: $nutritionData');
           return nutritionData;
         } catch (e) {
@@ -638,7 +692,8 @@ Apply the user's correction to adjust the nutritional values per 100g (calories,
         String errorMessage = 'Unknown error';
         try {
           final errorData = json.decode(response.body);
-          if (errorData is Map<String, dynamic> && errorData.containsKey('error')) {
+          if (errorData is Map<String, dynamic> &&
+              errorData.containsKey('error')) {
             final error = errorData['error'];
             if (error is Map<String, dynamic> && error.containsKey('message')) {
               errorMessage = error['message'].toString();
@@ -654,4 +709,4 @@ Apply the user's correction to adjust the nutritional values per 100g (calories,
       rethrow;
     }
   }
-} 
+}

@@ -5,7 +5,24 @@ import 'log_service.dart';
 import '../models/custom_recipe.dart';
 
 class SmartMealPlannerService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+  static const String _apiHost = 'generativelanguage.googleapis.com';
+  static const String _pathPrefix = '/v1beta/models/';
+  static const String _generateContentSuffix = ':generateContent';
+
+  static Future<Uri> _buildRequestUri(
+    String apiKey, {
+    String fallbackModel = 'gemini-1.5-flash-latest',
+  }) async {
+    final model = await SettingsService.getGeminiModel(
+      fallbackModel: fallbackModel,
+    );
+    final normalized = SettingsService.normalizeGeminiModelName(model);
+    return Uri.https(
+      _apiHost,
+      '$_pathPrefix$normalized$_generateContentSuffix',
+      {'key': apiKey},
+    );
+  }
 
   /// Generate a personalized meal recommendation based on available ingredients and user context
   static Future<Map<String, dynamic>?> generateMealRecommendation({
@@ -16,12 +33,16 @@ class SmartMealPlannerService {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
 
       // Check if user has complete profile
       if (!await SettingsService.hasCompleteProfile()) {
-        throw Exception('Incomplete profile. Please fill in all profile information in settings.');
+        throw Exception(
+          'Incomplete profile. Please fill in all profile information in settings.',
+        );
       }
 
       // Get user profile data
@@ -39,7 +60,10 @@ class SmartMealPlannerService {
       final entries = await logService.getLogEntriesByDate(currentDate);
 
       // Calculate current intake
-      double currentCalories = 0, currentProtein = 0, currentCarbs = 0, currentFat = 0;
+      double currentCalories = 0,
+          currentProtein = 0,
+          currentCarbs = 0,
+          currentFat = 0;
       for (var entry in entries) {
         currentCalories += (entry.calories! * entry.amount / 100);
         currentProtein += (entry.protein! * entry.amount / 100);
@@ -52,7 +76,7 @@ class SmartMealPlannerService {
       final hour = now.hour;
       String mealTime;
       String timeContext;
-      
+
       if (hour >= 5 && hour < 11) {
         mealTime = 'breakfast';
         timeContext = 'morning energy and metabolism boost';
@@ -153,24 +177,27 @@ GUIDELINES:
 - Consider the time of day for appropriate meal types
 - If missing key ingredients, suggest simple substitutions
 - Nutrition values should be per total recipe (all servings combined)
-"""
-              }
-            ]
-          }
+""",
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.7,
           "topK": 40,
           "topP": 0.95,
-          "maxOutputTokens": 2000
-        }
+          "maxOutputTokens": 2000,
+        },
       };
 
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-1.5-flash-latest',
+      );
+
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
 
@@ -181,21 +208,21 @@ GUIDELINES:
         if (text != null) {
           try {
             String cleanedText = text.trim();
-            
+
             if (cleanedText.startsWith('```json')) {
               cleanedText = cleanedText.substring(7);
             } else if (cleanedText.startsWith('```')) {
               cleanedText = cleanedText.substring(3);
             }
-            
+
             if (cleanedText.endsWith('```')) {
               cleanedText = cleanedText.substring(0, cleanedText.length - 3);
             }
-            
+
             cleanedText = cleanedText.trim();
-            
+
             final mealRecommendation = json.decode(cleanedText);
-            
+
             // Validate response structure
             if (_validateMealRecommendation(mealRecommendation)) {
               return mealRecommendation;
@@ -229,20 +256,20 @@ GUIDELINES:
         '15-30 minutes',
         '30-60 minutes',
         'Over 1 hour',
-        'I have all day'
+        'I have all day',
       ],
       'cookingSkill': [
         'Beginner (simple recipes)',
         'Intermediate (moderate techniques)',
         'Advanced (complex cooking)',
-        'Professional level'
+        'Professional level',
       ],
       'mealTypePreference': [
         'Light and fresh',
         'Hearty and filling',
         'Balanced and nutritious',
         'Comfort food',
-        'Gourmet experience'
+        'Gourmet experience',
       ],
       'cuisinePreference': [
         'Mediterranean',
@@ -252,7 +279,7 @@ GUIDELINES:
         'Italian',
         'Indian',
         'Middle Eastern',
-        'No preference'
+        'No preference',
       ],
       'dietaryRestrictions': [
         'None',
@@ -261,23 +288,27 @@ GUIDELINES:
         'Gluten-free',
         'Dairy-free',
         'Low-carb/Keto',
-        'Paleo'
-      ]
+        'Paleo',
+      ],
     };
   }
 
   /// Convert meal recommendation to CustomRecipe object
   static CustomRecipe convertToCustomRecipe(
     Map<String, dynamic> mealRecommendation,
-    String aiPrompt
+    String aiPrompt,
   ) {
-    final ingredients = (mealRecommendation['ingredients'] as List)
-        .map((ing) => '${ing['amount']} ${ing['name']}${ing['notes'] != null ? ' (${ing['notes']})' : ''}')
-        .toList()
-        .cast<String>();
+    final ingredients =
+        (mealRecommendation['ingredients'] as List)
+            .map(
+              (ing) =>
+                  '${ing['amount']} ${ing['name']}${ing['notes'] != null ? ' (${ing['notes']})' : ''}',
+            )
+            .toList()
+            .cast<String>();
 
-    final instructions = (mealRecommendation['instructions'] as List)
-        .cast<String>();
+    final instructions =
+        (mealRecommendation['instructions'] as List).cast<String>();
 
     final nutrition = mealRecommendation['nutrition'];
     final tags = (mealRecommendation['tags'] as List?)?.cast<String>() ?? [];
@@ -297,7 +328,11 @@ GUIDELINES:
       difficulty: mealRecommendation['difficulty'],
       tags: tags,
       aiGeneratedPrompt: aiPrompt,
-      defaultPortionSize: (nutrition['calories'] as num).toDouble() / (mealRecommendation['servings'] as int) * 100 / 100, // Rough estimate for portion size
+      defaultPortionSize:
+          (nutrition['calories'] as num).toDouble() /
+          (mealRecommendation['servings'] as int) *
+          100 /
+          100, // Rough estimate for portion size
       portionDescription: '1 serving',
     );
   }
@@ -306,14 +341,14 @@ GUIDELINES:
   static bool _validateMealRecommendation(Map<String, dynamic> recommendation) {
     final requiredKeys = [
       'recipeName',
-      'description', 
+      'description',
       'difficulty',
       'prepTime',
       'cookTime',
       'servings',
       'ingredients',
       'instructions',
-      'nutrition'
+      'nutrition',
     ];
 
     for (String key in requiredKeys) {
@@ -331,7 +366,7 @@ GUIDELINES:
 
     final nutrition = recommendation['nutrition'] as Map<String, dynamic>;
     final requiredNutritionKeys = ['calories', 'protein', 'carbs', 'fat'];
-    
+
     for (String key in requiredNutritionKeys) {
       if (!nutrition.containsKey(key) || nutrition[key] is! num) {
         print('Missing or invalid nutrition key: $key');

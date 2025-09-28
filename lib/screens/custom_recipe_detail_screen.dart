@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/custom_recipe.dart';
 import '../services/custom_recipe_service.dart';
 import '../services/log_service.dart';
+import '../utils/fasting_prompt.dart';
 import '../models/log_entry.dart';
 import '../widgets/custom_alert.dart';
-import 'ai_meal_planner_screen.dart';
-import 'log_entry_screen.dart';
 
 class CustomRecipeDetailScreen extends StatefulWidget {
   final CustomRecipe recipe;
@@ -13,7 +12,8 @@ class CustomRecipeDetailScreen extends StatefulWidget {
   const CustomRecipeDetailScreen({super.key, required this.recipe});
 
   @override
-  State<CustomRecipeDetailScreen> createState() => _CustomRecipeDetailScreenState();
+  State<CustomRecipeDetailScreen> createState() =>
+      _CustomRecipeDetailScreenState();
 }
 
 class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
@@ -70,15 +70,17 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             onPressed: _toggleFavorite,
           ),
           IconButton(
-            icon: Icon(
-              Icons.delete,
-              color: Colors.red,
-            ),
+            icon: Icon(Icons.delete, color: Colors.red),
             onPressed: _showDeleteConfirmation,
           ),
           IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: Icon(
+              Icons.home_outlined,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            onPressed:
+                () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
         ],
       ),
@@ -127,7 +129,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               _recipe.name,
               style: TextStyle(
-                fontSize: 24, 
+                fontSize: 24,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
@@ -136,7 +138,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               _recipe.description,
               style: TextStyle(
-                fontSize: 16, 
+                fontSize: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -146,9 +148,18 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _buildInfoChip(Icons.schedule, 'Prep: ${_recipe.prepTimeMinutes}m'),
-                _buildInfoChip(Icons.timer, 'Cook: ${_recipe.cookTimeMinutes}m'),
-                _buildInfoChip(Icons.restaurant, '${_recipe.servings} servings'),
+                _buildInfoChip(
+                  Icons.schedule,
+                  'Prep: ${_recipe.prepTimeMinutes}m',
+                ),
+                _buildInfoChip(
+                  Icons.timer,
+                  'Cook: ${_recipe.cookTimeMinutes}m',
+                ),
+                _buildInfoChip(
+                  Icons.restaurant,
+                  '${_recipe.servings} servings',
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -166,7 +177,10 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                     isEditable: true,
                   ),
                 ),
-                _buildInfoChip(Icons.access_time, 'Total: ${_recipe.totalTimeMinutes}m'),
+                _buildInfoChip(
+                  Icons.access_time,
+                  'Total: ${_recipe.totalTimeMinutes}m',
+                ),
               ],
             ),
           ],
@@ -181,7 +195,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     final proteinPerServing = _recipe.protein / _recipe.servings;
     final carbsPerServing = _recipe.carbs / _recipe.servings;
     final fatPerServing = _recipe.fat / _recipe.servings;
-    
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -203,18 +217,18 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               'Nutrition Information',
               style: TextStyle(
-                fontSize: 18, 
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // Total Recipe Nutrition
             Text(
               'Total Recipe (${_recipe.servings} servings)',
               style: TextStyle(
-                fontSize: 14, 
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -229,16 +243,18 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                 _buildNutritionItem('Fat', '${_recipe.fat.round()}g'),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            Divider(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+            Divider(
+              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            ),
             const SizedBox(height: 12),
-            
+
             // Per Serving Nutrition
             Text(
               'Per Serving',
               style: TextStyle(
-                fontSize: 14, 
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -247,7 +263,10 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNutritionItem('Calories', '${caloriesPerServing.round()}'),
+                _buildNutritionItem(
+                  'Calories',
+                  '${caloriesPerServing.round()}',
+                ),
                 _buildNutritionItem('Protein', '${proteinPerServing.round()}g'),
                 _buildNutritionItem('Carbs', '${carbsPerServing.round()}g'),
                 _buildNutritionItem('Fat', '${fatPerServing.round()}g'),
@@ -281,7 +300,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               'Ingredients',
               style: TextStyle(
-                fontSize: 18, 
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
@@ -293,10 +312,11 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               itemCount: _recipe.ingredients.length,
               itemBuilder: (context, index) {
                 String ingredient = _recipe.ingredients[index];
-                
+
                 // Clean up ingredient text - remove empty parentheses
-                ingredient = ingredient.replaceAll(RegExp(r'\(\s*\)'), '').trim();
-                
+                ingredient =
+                    ingredient.replaceAll(RegExp(r'\(\s*\)'), '').trim();
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -308,7 +328,9 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                         margin: const EdgeInsets.only(top: 2),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: Theme.of(context).colorScheme.primary),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                         child: Center(
                           child: Text(
@@ -364,7 +386,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               'Instructions',
               style: TextStyle(
-                fontSize: 18, 
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
@@ -376,10 +398,12 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               itemCount: _recipe.instructions.length,
               itemBuilder: (context, index) {
                 String instruction = _recipe.instructions[index];
-                
+
                 // Check if instruction already starts with a number (from AI)
-                bool hasNumberPrefix = RegExp(r'^\d+\.?\s').hasMatch(instruction.trim());
-                
+                bool hasNumberPrefix = RegExp(
+                  r'^\d+\.?\s',
+                ).hasMatch(instruction.trim());
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Row(
@@ -453,7 +477,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                 Text(
                   'Tags',
                   style: TextStyle(
-                    fontSize: 18, 
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
@@ -489,37 +513,41 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _recipe.tags.map((tag) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          tag,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            fontWeight: FontWeight.w500,
-                          ),
+                children:
+                    _recipe.tags.map((tag) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
                         ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => _removeTag(tag),
-                          child: Icon(
-                            Icons.close,
-                            size: 14,
-                            color: Theme.of(context).colorScheme.onPrimary,
-                          ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onPrimary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => _removeTag(tag),
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Theme.of(context).colorScheme.onPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
               ),
           ],
         ),
@@ -549,7 +577,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
             Text(
               'Log to Food Journal',
               style: TextStyle(
-                fontSize: 18, 
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
@@ -575,11 +603,15 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                     ),
                     keyboardType: TextInputType.number,
@@ -591,23 +623,27 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  icon: _isLogging
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).colorScheme.onPrimary,
+                  icon:
+                      _isLogging
+                          ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Theme.of(context).colorScheme.onPrimary,
+                              ),
                             ),
-                          ),
-                        )
-                      : const Icon(Icons.add),
+                          )
+                          : const Icon(Icons.add),
                   label: Text(_isLogging ? 'Logging...' : 'Log Food'),
                 ),
               ],
@@ -618,22 +654,31 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String text, {Color? color, bool isEditable = false}) {
+  Widget _buildInfoChip(
+    IconData icon,
+    String text, {
+    Color? color,
+    bool isEditable = false,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.1),
+        color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(
+          0.1,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.3),
+          color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(
+            0.3,
+          ),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            icon, 
-            size: 16, 
+            icon,
+            size: 16,
             color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 4),
@@ -655,7 +700,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         Text(
           value,
           style: TextStyle(
-            fontWeight: FontWeight.bold, 
+            fontWeight: FontWeight.bold,
             fontSize: 16,
             color: Theme.of(context).colorScheme.onSurface,
           ),
@@ -663,7 +708,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: 12, 
+            fontSize: 12,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
@@ -690,11 +735,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   }
 
   void _showErrorSnackBar(String message) {
-    AlertHelper.showErrorAlert(
-      context,
-      title: 'Error',
-      message: message,
-    );
+    AlertHelper.showErrorAlert(context, title: 'Error', message: message);
   }
 
   Future<void> _toggleFavorite() async {
@@ -703,13 +744,17 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
       setState(() {
         _recipe = _recipe.copyWith(isFavorite: !_recipe.isFavorite);
       });
-      
+
       AlertHelper.showSuccessAlert(
         context,
-        title: _recipe.isFavorite ? 'Added to Favorites' : 'Removed from Favorites',
-        message: _recipe.isFavorite 
-            ? 'Recipe has been added to your favorites'
-            : 'Recipe has been removed from your favorites',
+        title:
+            _recipe.isFavorite
+                ? 'Added to Favorites'
+                : 'Removed from Favorites',
+        message:
+            _recipe.isFavorite
+                ? 'Recipe has been added to your favorites'
+                : 'Recipe has been removed from your favorites',
       );
     } catch (e) {
       _showErrorSnackBar('Failed to update favorite status');
@@ -738,11 +783,12 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
 
     try {
       final now = DateTime.now();
-      
+
       final logEntry = LogEntry(
-        foodId: _recipe.foodId!,  // Use the linked food ID
+        foodId: _recipe.foodId!, // Use the linked food ID
         amount: 100.0, // Use 100g as base amount for custom recipes
-        date: '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        date:
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
         portions: servings, // Use portions field for servings
         foodName: _recipe.name,
         calories: _recipe.calories / _recipe.servings, // Per serving calories
@@ -753,13 +799,24 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
 
       await _logService.insertLogEntry(logEntry);
 
+      if (!mounted) return;
+
+      await FastingPrompt.showIfNeeded(
+        context,
+        loggedAt: logEntry.loggedAt,
+        mealName: _recipe.name,
+      );
+
+      if (!mounted) return;
+
       setState(() => _isLogging = false);
-      
+
       // Show success message with navigation option
       AlertHelper.showSuccessAlert(
         context,
         title: 'Recipe Logged Successfully!',
-        message: '$servings serving(s) of ${_recipe.name} logged to your daily nutrition.',
+        message:
+            '$servings serving(s) of ${_recipe.name} logged to your daily nutrition.',
         actionButtonText: 'View Today',
         onActionPressed: () {
           Navigator.of(context).pop(); // Close the alert
@@ -775,13 +832,16 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   }
 
   void _showDeleteConfirmation() async {
-    final bool confirm = await AlertHelper.showConfirmationAlert(
-      context,
-      title: 'Delete Recipe',
-      message: 'Are you sure you want to delete "${_recipe.name}"? This action cannot be undone.',
-      confirmButtonText: 'Delete',
-      type: AlertType.error,
-    ) ?? false;
+    final bool confirm =
+        await AlertHelper.showConfirmationAlert(
+          context,
+          title: 'Delete Recipe',
+          message:
+              'Are you sure you want to delete "${_recipe.name}"? This action cannot be undone.',
+          confirmButtonText: 'Delete',
+          type: AlertType.error,
+        ) ??
+        false;
 
     if (confirm) {
       await _deleteRecipe();
@@ -791,7 +851,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   Future<void> _deleteRecipe() async {
     try {
       await CustomRecipeService.deleteCustomRecipe(_recipe.id!);
-      
+
       if (mounted) {
         Navigator.of(context).pop();
         AlertHelper.showSuccessAlert(
@@ -821,25 +881,26 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            items: ['easy', 'medium', 'hard'].map((difficulty) {
-              return DropdownMenuItem(
-                value: difficulty,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: _getDifficultyColor(difficulty),
-                        shape: BoxShape.circle,
-                      ),
+            items:
+                ['easy', 'medium', 'hard'].map((difficulty) {
+                  return DropdownMenuItem(
+                    value: difficulty,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: _getDifficultyColor(difficulty),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_capitalizeFirst(difficulty)),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(_capitalizeFirst(difficulty)),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
             onChanged: (value) {
               if (value != null) {
                 setState(() {
@@ -858,7 +919,9 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         TextButton(
           onPressed: () async {
             try {
-              final updatedRecipe = _recipe.copyWith(difficulty: _tempDifficulty);
+              final updatedRecipe = _recipe.copyWith(
+                difficulty: _tempDifficulty,
+              );
               await CustomRecipeService.updateCustomRecipe(updatedRecipe);
               setState(() {
                 _recipe = updatedRecipe;
@@ -867,7 +930,8 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               AlertHelper.showSuccessAlert(
                 context,
                 title: 'Difficulty Updated',
-                message: 'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
+                message:
+                    'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
               );
             } catch (e) {
               Navigator.of(context).pop();
@@ -907,10 +971,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        TextButton(
-          onPressed: _addTag,
-          child: const Text('Add'),
-        ),
+        TextButton(onPressed: _addTag, child: const Text('Add')),
       ],
     );
   }
@@ -946,7 +1007,9 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
 
   void _removeTag(String tag) async {
     try {
-      final updatedRecipe = _recipe.copyWith(tags: _recipe.tags.where((t) => t != tag).toList());
+      final updatedRecipe = _recipe.copyWith(
+        tags: _recipe.tags.where((t) => t != tag).toList(),
+      );
       await CustomRecipeService.updateCustomRecipe(updatedRecipe);
       setState(() {
         _recipe = updatedRecipe;

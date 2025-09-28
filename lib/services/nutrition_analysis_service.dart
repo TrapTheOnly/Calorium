@@ -4,19 +4,42 @@ import 'settings_service.dart';
 import 'log_service.dart';
 
 class NutritionAnalysisService {
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
-  
+  static const String _apiHost = 'generativelanguage.googleapis.com';
+  static const String _pathPrefix = '/v1beta/models/';
+  static const String _generateContentSuffix = ':generateContent';
+
+  static Future<Uri> _buildRequestUri(
+    String apiKey, {
+    String fallbackModel = 'gemini-1.5-flash-latest',
+  }) async {
+    final model = await SettingsService.getGeminiModel(
+      fallbackModel: fallbackModel,
+    );
+    final normalized = SettingsService.normalizeGeminiModelName(model);
+    return Uri.https(
+      _apiHost,
+      '$_pathPrefix$normalized$_generateContentSuffix',
+      {'key': apiKey},
+    );
+  }
+
   /// Analyzes daily nutrition intake and generates 5 personalized suggestions plus a motivational quote
-  static Future<Map<String, dynamic>?> analyzeDailyNutrition(String date) async {
+  static Future<Map<String, dynamic>?> analyzeDailyNutrition(
+    String date,
+  ) async {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
 
       // Check if user has complete profile
       if (!await SettingsService.hasCompleteProfile()) {
-        throw Exception('Incomplete profile. Please fill in all profile information in settings.');
+        throw Exception(
+          'Incomplete profile. Please fill in all profile information in settings.',
+        );
       }
 
       // Get user profile data
@@ -66,9 +89,12 @@ class NutritionAnalysisService {
       final now = DateTime.parse(date);
       for (int i = 1; i <= 3; i++) {
         final pastDate = now.subtract(Duration(days: i));
-        final pastDateString = '${pastDate.year}-${pastDate.month.toString().padLeft(2, '0')}-${pastDate.day.toString().padLeft(2, '0')}';
-        final pastEntries = await logService.getLogEntriesByDate(pastDateString);
-        
+        final pastDateString =
+            '${pastDate.year}-${pastDate.month.toString().padLeft(2, '0')}-${pastDate.day.toString().padLeft(2, '0')}';
+        final pastEntries = await logService.getLogEntriesByDate(
+          pastDateString,
+        );
+
         double pastCalories = 0, pastProtein = 0, pastCarbs = 0, pastFat = 0;
         for (var entry in pastEntries) {
           pastCalories += (entry.calories! * entry.amount / 100);
@@ -76,7 +102,7 @@ class NutritionAnalysisService {
           pastCarbs += (entry.carbs! * entry.amount / 100);
           pastFat += (entry.fat! * entry.amount / 100);
         }
-        
+
         recentDaysData.add({
           'calories': pastCalories,
           'protein': pastProtein,
@@ -147,25 +173,28 @@ GUIDELINES for motivational quote:
 6. Make it feel genuine, not generic
 
 Remember: Respond with ONLY the JSON object, no additional text.
-"""
-              }
-            ]
-          }
+""",
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.7,
           "topK": 40,
           "topP": 0.95,
-          "maxOutputTokens": 1000
-        }
+          "maxOutputTokens": 1000,
+        },
       };
 
       // Make the API request
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-1.5-flash-latest',
+      );
+
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
 
@@ -177,35 +206,36 @@ Remember: Respond with ONLY the JSON object, no additional text.
           try {
             // Clean the response
             String cleanedText = text.trim();
-            
+
             // Remove markdown code block markers if present
             if (cleanedText.startsWith('```json')) {
               cleanedText = cleanedText.substring(7);
             } else if (cleanedText.startsWith('```')) {
               cleanedText = cleanedText.substring(3);
             }
-            
+
             if (cleanedText.endsWith('```')) {
               cleanedText = cleanedText.substring(0, cleanedText.length - 3);
             }
-            
+
             cleanedText = cleanedText.trim();
-            
+
             final analysisResult = json.decode(cleanedText);
-            
+
             // Validate the response structure
-            if (analysisResult['suggestions'] is List && 
+            if (analysisResult['suggestions'] is List &&
                 analysisResult['motivationalQuote'] is String &&
                 (analysisResult['suggestions'] as List).length == 5) {
-              
               // Store the suggestions and quote
               await SettingsService.setDailyAiSuggestions(
-                date, 
-                (analysisResult['suggestions'] as List).cast<String>()
+                date,
+                (analysisResult['suggestions'] as List).cast<String>(),
               );
-              await SettingsService.setAiQuote(analysisResult['motivationalQuote']);
+              await SettingsService.setAiQuote(
+                analysisResult['motivationalQuote'],
+              );
               await SettingsService.setLastAiAnalysisDate(date);
-              
+
               return analysisResult;
             } else {
               throw Exception('Invalid response structure from AI');
@@ -230,11 +260,15 @@ Remember: Respond with ONLY the JSON object, no additional text.
   }
 
   /// Generates a weekly nutrition summary and analysis
-  static Future<Map<String, dynamic>?> generateWeeklySummary(String weekStartDate) async {
+  static Future<Map<String, dynamic>?> generateWeeklySummary(
+    String weekStartDate,
+  ) async {
     try {
       final apiKey = await SettingsService.getGeminiApiKey();
       if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('API key not set. Please configure your Gemini AI API key in settings.');
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
       }
 
       // Get user profile data
@@ -248,18 +282,19 @@ Remember: Respond with ONLY the JSON object, no additional text.
 
       final logService = LogService();
       final startDate = DateTime.parse(weekStartDate);
-      
+
       List<Map<String, dynamic>> weeklyData = [];
-      
+
       // Collect 7 days of data
       for (int i = 0; i < 7; i++) {
         final date = startDate.add(Duration(days: i));
-        final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        final dateString =
+            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
         final entries = await logService.getLogEntriesByDate(dateString);
-        
+
         double dayCalories = 0, dayProtein = 0, dayCarbs = 0, dayFat = 0;
         List<String> foods = [];
-        
+
         for (var entry in entries) {
           dayCalories += (entry.calories! * entry.amount / 100);
           dayProtein += (entry.protein! * entry.amount / 100);
@@ -267,10 +302,19 @@ Remember: Respond with ONLY the JSON object, no additional text.
           dayFat += (entry.fat! * entry.amount / 100);
           foods.add(entry.foodName!);
         }
-        
+
         weeklyData.add({
           'date': dateString,
-          'dayName': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][date.weekday - 1],
+          'dayName':
+              [
+                'Monday',
+                'Tuesday',
+                'Wednesday',
+                'Thursday',
+                'Friday',
+                'Saturday',
+                'Sunday',
+              ][date.weekday - 1],
           'calories': dayCalories.round(),
           'protein': dayProtein.round(),
           'carbs': dayCarbs.round(),
@@ -328,24 +372,27 @@ TASK: Provide a comprehensive weekly analysis as a JSON object:
 Calculate averages, assess consistency of intake, evaluate target adherence, and provide actionable insights and recommendations for the upcoming week.
 
 Respond with ONLY the JSON object, no additional text.
-"""
-              }
-            ]
-          }
+""",
+              },
+            ],
+          },
         ],
         "generationConfig": {
           "temperature": 0.7,
           "topK": 40,
           "topP": 0.95,
-          "maxOutputTokens": 1200
-        }
+          "maxOutputTokens": 1200,
+        },
       };
+      // Make the API request
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: 'gemini-1.5-flash-latest',
+      );
 
       final response = await http.post(
-        Uri.parse('$_baseUrl?key=$apiKey'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
         body: json.encode(requestBody),
       );
 
@@ -356,25 +403,26 @@ Respond with ONLY the JSON object, no additional text.
         if (text != null) {
           try {
             String cleanedText = text.trim();
-            
+
             if (cleanedText.startsWith('```json')) {
               cleanedText = cleanedText.substring(7);
             } else if (cleanedText.startsWith('```')) {
               cleanedText = cleanedText.substring(3);
             }
-            
+
             if (cleanedText.endsWith('```')) {
               cleanedText = cleanedText.substring(0, cleanedText.length - 3);
             }
-            
+
             cleanedText = cleanedText.trim();
-            
+
             final weeklyAnalysis = json.decode(cleanedText);
-            
+
             // Store the weekly analysis
-            final weekKey = '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
+            final weekKey =
+                '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
             await SettingsService.setWeeklyAnalysis(weekKey, weeklyAnalysis);
-            
+
             return weeklyAnalysis;
           } catch (e) {
             print('Error parsing weekly analysis response: $e');
@@ -400,18 +448,19 @@ Respond with ONLY the JSON object, no additional text.
     final logService = LogService();
     final now = DateTime.now();
     int daysWithData = 0;
-    
+
     // Check last 7 days for at least 3 days with entries
     for (int i = 0; i < 7; i++) {
       final date = now.subtract(Duration(days: i));
-      final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateString =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final entries = await logService.getLogEntriesByDate(dateString);
-      
+
       if (entries.isNotEmpty) {
         daysWithData++;
       }
     }
-    
+
     return daysWithData >= 3;
   }
-} 
+}

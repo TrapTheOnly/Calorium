@@ -4,6 +4,7 @@ import '../models/food.dart';
 import '../models/log_entry.dart';
 import '../services/food_service.dart';
 import '../services/log_service.dart';
+import '../utils/fasting_prompt.dart';
 
 class AddFoodScreen extends StatefulWidget {
   final Food? food;
@@ -26,14 +27,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   final _portionDescController = TextEditingController();
   final _portionsController = TextEditingController();
   final _tagController = TextEditingController();
-  
+
   final FoodService _foodService = FoodService();
   final LogService _logService = LogService();
-  
+
   bool _usePortions = false; // Toggle between grams and portions
   List<String> _selectedTags = [];
   List<String> _availableTags = [];
-  
+
   bool get isEditing => widget.food != null;
   bool get isFromBarcode => widget.food != null && widget.food!.id == null;
 
@@ -41,7 +42,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   void initState() {
     super.initState();
     _loadAvailableTags();
-    
+
     if (isEditing) {
       _nameController.text = widget.food!.name;
       _caloriesController.text = widget.food!.calories.toString();
@@ -62,7 +63,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _portionsController.text = "1";
     }
   }
-  
+
   Future<void> _loadAvailableTags() async {
     try {
       final tags = await _foodService.getAllSimpleFoodTags();
@@ -73,7 +74,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       // Handle error silently
     }
   }
-  
+
   void _addTag(String tag) {
     final trimmedTag = tag.trim().toLowerCase();
     if (trimmedTag.isNotEmpty && !_selectedTags.contains(trimmedTag)) {
@@ -87,7 +88,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _tagController.clear();
     }
   }
-  
+
   void _removeTag(String tag) {
     setState(() {
       _selectedTags.remove(tag);
@@ -111,7 +112,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
 
   Future<void> _saveExisting() async {
     if (_nameController.text.trim().isEmpty) return;
-    
+
     final updatedFood = Food(
       id: widget.food!.id,
       name: _nameController.text.trim(),
@@ -124,7 +125,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       portionDescription: _portionDescController.text,
       tags: _selectedTags,
     );
-    
+
     await _foodService.updateFood(updatedFood);
     Navigator.pop(context, updatedFood.id);
   }
@@ -133,10 +134,10 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     if (widget.date == null) return;
     if (_usePortions && _portionsController.text.isEmpty) return;
     if (!_usePortions && _amountController.text.isEmpty) return;
-    
+
     double amount;
     double portions = 1.0;
-    
+
     if (_usePortions) {
       // Calculate grams based on portions and default portion size
       portions = double.parse(_portionsController.text);
@@ -145,20 +146,29 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       // Direct gram input
       amount = double.parse(_amountController.text);
     }
-    
-    await _logService.insertLogEntry(
-      LogEntry(
-        foodId: widget.food!.id!,
-        amount: amount,
-        portions: portions,
-        date: widget.date!,
-      ),
+
+    final entry = LogEntry(
+      foodId: widget.food!.id!,
+      amount: amount,
+      portions: portions,
+      date: widget.date!,
     );
-    
+
+    await _logService.insertLogEntry(entry);
+
+    if (mounted) {
+      await FastingPrompt.showIfNeeded(
+        context,
+        loggedAt: entry.loggedAt,
+        mealName: widget.food?.name,
+      );
+      if (!mounted) return;
+    }
+
     Navigator.pop(context, widget.food!.id);
     Navigator.popUntil(
-      context, 
-      (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
+      context,
+      (route) => route.settings.name == 'DailyLogScreen' || route.isFirst,
     );
   }
 
@@ -174,7 +184,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       portionDescription: _portionDescController.text,
       tags: _selectedTags,
     );
-    
+
     return await _foodService.insertFood(newFood);
   }
 
@@ -184,36 +194,46 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       if (_usePortions && _portionsController.text.isEmpty) return;
       if (!_usePortions && _amountController.text.isEmpty) return;
     }
-    
+
     final foodId = await _insertSimple();
-    
+
     if (widget.date != null) {
       double amount;
       double portions = 1.0;
-      
+
       if (_usePortions) {
         // Calculate grams based on portions and default portion size
         portions = double.parse(_portionsController.text);
-        final portionSize = double.tryParse(_portionSizeController.text) ?? 100.0;
+        final portionSize =
+            double.tryParse(_portionSizeController.text) ?? 100.0;
         amount = portions * portionSize;
       } else {
         // Direct gram input
         amount = double.parse(_amountController.text);
       }
-      
-      await _logService.insertLogEntry(
-        LogEntry(
-          foodId: foodId,
-          amount: amount,
-          portions: portions,
-          date: widget.date!,
-        ),
+
+      final entry = LogEntry(
+        foodId: foodId,
+        amount: amount,
+        portions: portions,
+        date: widget.date!,
       );
-      
+
+      await _logService.insertLogEntry(entry);
+
+      if (mounted) {
+        await FastingPrompt.showIfNeeded(
+          context,
+          loggedAt: entry.loggedAt,
+          mealName: _nameController.text.trim(),
+        );
+        if (!mounted) return;
+      }
+
       Navigator.pop(context, foodId);
       Navigator.popUntil(
-        context, 
-        (route) => route.settings.name == 'DailyLogScreen' || route.isFirst
+        context,
+        (route) => route.settings.name == 'DailyLogScreen' || route.isFirst,
       );
     } else {
       Navigator.pop(context, foodId);
@@ -222,25 +242,27 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
 
   bool get canSaveAndLog {
     if (_nameController.text.trim().isEmpty) return false;
-    if (_caloriesController.text.isEmpty || 
-        double.tryParse(_caloriesController.text) == null || 
+    if (_caloriesController.text.isEmpty ||
+        double.tryParse(_caloriesController.text) == null ||
         double.tryParse(_caloriesController.text)! <= 0) {
       return false;
     }
-    if (_portionSizeController.text.isEmpty || 
-        double.tryParse(_portionSizeController.text) == null || 
+    if (_portionSizeController.text.isEmpty ||
+        double.tryParse(_portionSizeController.text) == null ||
         double.tryParse(_portionSizeController.text)! <= 0) {
       return false;
     }
     if (widget.date != null) {
-      if (_usePortions && (_portionsController.text.isEmpty || 
-          double.tryParse(_portionsController.text) == null || 
-          double.tryParse(_portionsController.text)! <= 0)) {
+      if (_usePortions &&
+          (_portionsController.text.isEmpty ||
+              double.tryParse(_portionsController.text) == null ||
+              double.tryParse(_portionsController.text)! <= 0)) {
         return false;
       }
-      if (!_usePortions && (_amountController.text.isEmpty || 
-          double.tryParse(_amountController.text) == null || 
-          double.tryParse(_amountController.text)! <= 0)) {
+      if (!_usePortions &&
+          (_amountController.text.isEmpty ||
+              double.tryParse(_amountController.text) == null ||
+              double.tryParse(_amountController.text)! <= 0)) {
         return false;
       }
     }
@@ -263,8 +285,13 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: Icon(
+              Icons.home_outlined,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            onPressed:
+                () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
         ],
       ),
@@ -275,7 +302,9 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                isEditing && !isFromBarcode ? 'Edit Food' : (isFromBarcode ? 'Add Scanned Food' : 'Add Food'),
+                isEditing && !isFromBarcode
+                    ? 'Edit Food'
+                    : (isFromBarcode ? 'Add Scanned Food' : 'Add Food'),
                 style: TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
@@ -283,7 +312,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               // Food info section
               Text(
                 'Food Information',
@@ -294,15 +323,23 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              
+
               _buildFormInput('Name', _nameController),
-              _buildFormInput('Calories/100g', _caloriesController, numeric: true),
+              _buildFormInput(
+                'Calories/100g',
+                _caloriesController,
+                numeric: true,
+              ),
               _buildFormInput('Fat/100g', _fatController, numeric: true),
               _buildFormInput('Carbs/100g', _carbsController, numeric: true),
-              _buildFormInput('Protein/100g', _proteinController, numeric: true),
-              
+              _buildFormInput(
+                'Protein/100g',
+                _proteinController,
+                numeric: true,
+              ),
+
               const SizedBox(height: 12),
-              
+
               // Portion size section
               Text(
                 'Portion Information',
@@ -321,12 +358,19 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              
-              _buildFormInput('Portion Size (g)', _portionSizeController, numeric: true),
-              _buildFormInput('Description (e.g. "1 bar", "1 cup")', _portionDescController),
-              
+
+              _buildFormInput(
+                'Portion Size (g)',
+                _portionSizeController,
+                numeric: true,
+              ),
+              _buildFormInput(
+                'Description (e.g. "1 bar", "1 cup")',
+                _portionDescController,
+              ),
+
               const SizedBox(height: 12),
-              
+
               // Tags section
               Text(
                 'Tags',
@@ -345,7 +389,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              
+
               // Tag input field
               Row(
                 children: [
@@ -356,15 +400,25 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                         hintText: 'Enter a tag',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outline.withOpacity(0.2),
+                          ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outline.withOpacity(0.2),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
@@ -388,9 +442,9 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               // Available tags (quick add)
               if (_availableTags.isNotEmpty) ...[
                 Text(
@@ -405,44 +459,62 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _availableTags.where((tag) => !_selectedTags.contains(tag)).map((tag) => 
-                    GestureDetector(
-                      onTap: () => _addTag(tag),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
+                  children:
+                      _availableTags
+                          .where((tag) => !_selectedTags.contains(tag))
+                          .map(
+                            (tag) => GestureDetector(
+                              onTap: () => _addTag(tag),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outline.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      tag,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color:
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.add,
+                                      size: 14,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.add,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ).toList(),
+                          )
+                          .toList(),
                 ),
                 const SizedBox(height: 12),
               ],
-              
+
               // Selected tags
               if (_selectedTags.isNotEmpty) ...[
                 Text(
@@ -457,41 +529,53 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _selectedTags.map((tag) => 
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            tag,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                              fontWeight: FontWeight.w500,
+                  children:
+                      _selectedTags
+                          .map(
+                            (tag) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    tag,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () => _removeTag(tag),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 14,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).colorScheme.onPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          GestureDetector(
-                            onTap: () => _removeTag(tag),
-                            child: Icon(
-                              Icons.close,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ).toList(),
+                          )
+                          .toList(),
                 ),
                 const SizedBox(height: 12),
               ],
-              
+
               // Logging section - only show when adding to daily log
               if (widget.date != null) ...[
                 const SizedBox(height: 12),
@@ -504,7 +588,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // // Toggle between portions and grams
                 // Row(
                 //   children: [
@@ -534,12 +618,13 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 //     ),
                 //   ],
                 // ),
-                
                 Container(
                   margin: const EdgeInsets.only(bottom: 16.0),
                   height: 50,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(25),
                   ),
                   child: Stack(
@@ -548,13 +633,20 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                       AnimatedPositioned(
                         duration: const Duration(milliseconds: 250),
                         curve: Curves.easeInOut,
-                        left: _usePortions ? MediaQuery.of(context).size.width / 2 - 24 : 0,
-                        right: _usePortions ? 0 : MediaQuery.of(context).size.width / 2 - 24,
+                        left:
+                            _usePortions
+                                ? MediaQuery.of(context).size.width / 2 - 24
+                                : 0,
+                        right:
+                            _usePortions
+                                ? 0
+                                : MediaQuery.of(context).size.width / 2 - 24,
                         top: 4,
                         bottom: 4,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(21),
                           ),
                         ),
@@ -579,9 +671,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: !_usePortions 
-                                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color:
+                                          !_usePortions
+                                              ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer
+                                              : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ),
@@ -605,9 +702,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
-                                      color: _usePortions 
-                                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      color:
+                                          _usePortions
+                                              ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimaryContainer
+                                              : Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ),
@@ -619,14 +721,24 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                     ],
                   ),
                 ),
-                
+
                 if (_usePortions)
-                  _buildFormInput('Number of portions', _portionsController, numeric: true)
+                  _buildFormInput(
+                    'Number of portions',
+                    _portionsController,
+                    numeric: true,
+                  )
                 else
-                  _buildFormInput('Amount eaten (g)', _amountController, numeric: true),
-                
+                  _buildFormInput(
+                    'Amount eaten (g)',
+                    _amountController,
+                    numeric: true,
+                  ),
+
                 // Show estimation of actual amount
-                if (_usePortions && double.tryParse(_portionsController.text) != null && double.tryParse(_portionSizeController.text) != null)
+                if (_usePortions &&
+                    double.tryParse(_portionsController.text) != null &&
+                    double.tryParse(_portionSizeController.text) != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 20.0),
                     child: Text(
@@ -639,21 +751,24 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                     ),
                   ),
               ],
-              
+
               const SizedBox(height: 20),
-              
+
               if (isEditing && !isFromBarcode) ...[
                 _buildPrimaryButton(
                   'Save Changes',
                   _saveExisting,
-                  disabled: _nameController.text.trim().isEmpty || _portionSizeController.text.isEmpty,
+                  disabled:
+                      _nameController.text.trim().isEmpty ||
+                      _portionSizeController.text.isEmpty,
                 ),
                 if (widget.date != null)
                   _buildPrimaryButton(
                     'Add to Log',
                     _addLogExisting,
-                    disabled: (_usePortions && _portionsController.text.isEmpty) || 
-                              (!_usePortions && _amountController.text.isEmpty),
+                    disabled:
+                        (_usePortions && _portionsController.text.isEmpty) ||
+                        (!_usePortions && _amountController.text.isEmpty),
                   ),
               ] else
                 _buildPrimaryButton(
@@ -661,7 +776,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   _saveAndLogNew,
                   disabled: !canSaveAndLog,
                 ),
-              
+
               const SizedBox(height: 40),
             ],
           ),
@@ -670,7 +785,11 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     );
   }
 
-  Widget _buildFormInput(String label, TextEditingController controller, {bool numeric = false}) {
+  Widget _buildFormInput(
+    String label,
+    TextEditingController controller, {
+    bool numeric = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20.0),
       child: Column(
@@ -688,9 +807,12 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           TextField(
             controller: controller,
             keyboardType: numeric ? TextInputType.number : TextInputType.text,
-            inputFormatters: numeric
-                ? [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$'))]
-                : null,
+            inputFormatters:
+                numeric
+                    ? [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+                    ]
+                    : null,
             onChanged: (value) {
               setState(() {});
             },
@@ -698,14 +820,20 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
               hintText: '',
-              hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              hintStyle: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.5)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -714,7 +842,10 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   width: 2,
                 ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
             style: TextStyle(
               fontSize: 18,
@@ -726,7 +857,11 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     );
   }
 
-  Widget _buildPrimaryButton(String text, VoidCallback onPressed, {bool disabled = false}) {
+  Widget _buildPrimaryButton(
+    String text,
+    VoidCallback onPressed, {
+    bool disabled = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18.0),
       child: SizedBox(
@@ -736,7 +871,9 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           style: ElevatedButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.primary,
             foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            disabledBackgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+            disabledBackgroundColor: Theme.of(
+              context,
+            ).colorScheme.primary.withOpacity(0.4),
             disabledForegroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 20),
             shape: RoundedRectangleBorder(
@@ -746,10 +883,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           ),
           child: Text(
             text,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
         ),
       ),

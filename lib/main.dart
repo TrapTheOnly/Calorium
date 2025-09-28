@@ -9,7 +9,6 @@ import 'utils/health_permission_provider.dart';
 import 'services/scheduler_service.dart';
 
 // Import debug service for easy access during development
-import 'services/debug_service.dart' as debug;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -1,10 +1,9 @@
-// In lib/models/log_entry.dart, update the LogEntry class:
-
 class LogEntry {
   final int? id;
   final int foodId;
   final double amount;
   final String date;
+  final DateTime loggedAt;
   final String? foodName;
   final double? calories;
   final double? fat;
@@ -13,12 +12,13 @@ class LogEntry {
   final double? portions;
   final double? defaultPortionSize;
   final String? portionDescription;
-  
+
   LogEntry({
     this.id,
     required this.foodId,
     required this.amount,
     required this.date,
+    DateTime? loggedAt,
     this.foodName,
     this.calories,
     this.fat,
@@ -27,24 +27,29 @@ class LogEntry {
     this.portions = 1.0,
     this.defaultPortionSize,
     this.portionDescription,
-  });
-  
+  }) : loggedAt = loggedAt ?? DateTime.now();
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'foodId': foodId,
       'amount': amount,
       'date': date,
+      'loggedAt': loggedAt.millisecondsSinceEpoch,
       'portions': portions,
     };
   }
-  
+
   factory LogEntry.fromMap(Map<String, dynamic> map) {
     return LogEntry(
       id: map['id'],
       foodId: map['foodId'],
       amount: map['amount'],
       date: map['date'],
+      loggedAt:
+          map['loggedAt'] != null
+              ? DateTime.fromMillisecondsSinceEpoch(map['loggedAt'])
+              : DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
       foodName: map['name'],
       calories: map['calories'],
       fat: map['fat'],

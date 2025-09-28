@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/food.dart';
 import '../models/custom_recipe.dart';
 import '../services/food_service.dart';
@@ -42,11 +41,11 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   
   // Tag management for simple foods
   List<String> _availableTags = [];
-  List<String> _selectedTags = [];
+  final List<String> _selectedTags = [];
   
   // Tag management for AI recipes
   List<String> _availableRecipeTags = [];
-  List<String> _selectedRecipeTags = [];
+  final List<String> _selectedRecipeTags = [];
   
   // Track loading state
   bool _isLoadingSimple = false;
@@ -586,7 +585,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                               decoration: BoxDecoration(
                                 color: isSelected 
                                     ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(15),
                                 border: Border.all(
                                   color: isSelected 
@@ -804,7 +803,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                               decoration: BoxDecoration(
                                 color: isSelected 
                                     ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(15),
                                 border: Border.all(
                                   color: isSelected 
@@ -1050,7 +1049,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                           children: food.tags.map((tag) => Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -1354,7 +1353,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     children: recipe.tags.map((tag) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1716,7 +1715,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     children: food.tags.map((tag) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
