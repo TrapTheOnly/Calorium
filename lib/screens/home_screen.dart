@@ -2,20 +2,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../models/log_entry.dart';
 import '../models/health_data.dart';
 import '../services/log_service.dart';
-import '../services/health_service.dart';
 import '../services/fasting_service.dart';
 import '../models/fasting_settings.dart';
+import '../services/scheduler_service.dart';
 import '../utils/health_permission_provider.dart';
 import '../widgets/health_data_card.dart';
-import '../widgets/nutrition_summary_card.dart';
 import '../widgets/custom_alert.dart';
 import '../widgets/add_food_options_dialog.dart';
 import '../widgets/fasting_overview_card.dart';
 import 'date_picker_screen.dart';
-import 'ai_quick_add_screen.dart';
 import 'inventory_screen.dart';
 import 'ai_meal_planner_screen.dart';
 import 'weekly_analysis_screen.dart';
@@ -39,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   FastingStatus? _fastingStatus;
   Timer? _fastingTimer;
   int _fastingStreakDays = 0;
+  Duration _timeUntilChange = Duration.zero;
   final String todayDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
   final String prettyToday = DateFormat.yMMMMd().format(DateTime.now());
 
@@ -78,35 +76,64 @@ class _HomeScreenState extends State<HomeScreen> {
       _fastingStatus = status;
       _isLoadingFasting = false;
       _fastingStreakDays = streak.days;
+      final diff = status.nextChange.difference(now);
+      _timeUntilChange = diff.isNegative ? Duration.zero : diff;
     });
 
     if (settings.enabled && status.enabled) {
+      await SchedulerService.showEatingWindowNotification(
+        timeRemaining:
+            status.phase == FastingPhase.eating
+                ? _timeUntilChange
+                : Duration.zero,
+        isActive: status.phase == FastingPhase.eating,
+      );
       _startFastingTicker();
     } else {
       _stopFastingTicker();
+      await SchedulerService.showEatingWindowNotification(
+        timeRemaining: Duration.zero,
+        isActive: false,
+      );
     }
   }
 
   void _startFastingTicker() {
     _fastingTimer?.cancel();
-    _fastingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) {
-        _stopFastingTicker();
-        return;
-      }
-      final settings = _fastingSettings;
-      if (settings == null || !settings.enabled) {
-        return;
-      }
-      setState(() {
-        _fastingStatus = settings.statusAt(DateTime.now());
-      });
+    _fastingTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      await _refreshFastingStatus();
     });
+    _refreshFastingStatus();
   }
 
   void _stopFastingTicker() {
     _fastingTimer?.cancel();
     _fastingTimer = null;
+  }
+
+  Future<void> _refreshFastingStatus() async {
+    if (!mounted) return;
+    final settings = _fastingSettings;
+    if (settings == null || !settings.enabled) {
+      return;
+    }
+    final now = DateTime.now();
+    final nextStatus = settings.statusAt(now);
+    final nextDiff = nextStatus.nextChange.difference(now);
+    final remaining = nextDiff.isNegative ? Duration.zero : nextDiff;
+
+    if (!mounted) return;
+
+    setState(() {
+      _fastingStatus = nextStatus;
+      _timeUntilChange = remaining;
+    });
+
+    await SchedulerService.showEatingWindowNotification(
+      timeRemaining:
+          nextStatus.phase == FastingPhase.eating ? remaining : Duration.zero,
+      isActive: nextStatus.phase == FastingPhase.eating,
+    );
   }
 
   @override
@@ -143,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       settings: settings,
       streakDays: _fastingStreakDays,
       onConfigure: _openSettings,
+      timeRemaining: _timeUntilChange,
     );
   }
 
@@ -167,47 +195,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initializeHealthData() async {
-    debugPrint('[HomeScreen] _initializeHealthData called');
     final healthProvider = Provider.of<HealthPermissionProvider>(
       context,
       listen: false,
     );
 
-    debugPrint(
-      '[HomeScreen] HealthProvider state - hasPermissions: ${healthProvider.hasPermissions}, isInitialized: ${healthProvider.isInitialized}',
-    );
-
     // Wait for provider to initialize if it hasn't already
     if (!healthProvider.isInitialized) {
-      debugPrint(
-        '[HomeScreen] Provider not initialized, adding listener for completion',
-      );
       // Listen for initialization completion
       healthProvider.addListener(_onHealthProviderChange);
       return;
     }
 
     if (healthProvider.hasPermissions) {
-      debugPrint(
-        '[HomeScreen] Provider has permissions, getting today health data',
-      );
       try {
         final healthData = await healthProvider.getTodayHealthData();
-        debugPrint('[HomeScreen] Health data received, updating UI');
         setState(() {
           _healthData = healthData;
           _isLoadingHealth = false;
         });
       } catch (e) {
-        debugPrint('[HomeScreen] Error getting health data: $e');
         setState(() {
           _isLoadingHealth = false;
         });
       }
     } else {
-      debugPrint(
-        '[HomeScreen] Provider does not have permissions, updating UI',
-      );
       setState(() {
         _isLoadingHealth = false;
       });
@@ -215,50 +227,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onHealthProviderChange() {
-    debugPrint('[HomeScreen] _onHealthProviderChange called');
     final healthProvider = Provider.of<HealthPermissionProvider>(
       context,
       listen: false,
     );
-    debugPrint(
-      '[HomeScreen] Provider state in change listener - hasPermissions: ${healthProvider.hasPermissions}, isInitialized: ${healthProvider.isInitialized}',
-    );
 
     if (healthProvider.isInitialized) {
-      debugPrint(
-        '[HomeScreen] Provider is now initialized, removing listener and re-initializing health data',
-      );
       healthProvider.removeListener(_onHealthProviderChange);
       _initializeHealthData();
     }
   }
 
   Future<void> _requestHealthPermissions() async {
-    debugPrint('[HomeScreen] _requestHealthPermissions called');
     final healthProvider = Provider.of<HealthPermissionProvider>(
       context,
       listen: false,
     );
 
     try {
-      debugPrint('[HomeScreen] Requesting permissions from provider');
       final granted = await healthProvider.requestPermissions();
-
-      debugPrint('[HomeScreen] Permission request result: $granted');
       if (granted) {
-        debugPrint('[HomeScreen] Permissions granted, getting health data');
         final healthData = await healthProvider.getTodayHealthData();
         setState(() {
           _healthData = healthData;
         });
-        debugPrint(
-          '[HomeScreen] Health data updated in UI after permission grant',
-        );
-      } else {
-        debugPrint('[HomeScreen] Permissions were not granted');
       }
     } catch (e) {
-      debugPrint('[HomeScreen] Error requesting health permissions: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -282,13 +276,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('[HomeScreen] build method called');
     return Consumer<HealthPermissionProvider>(
       builder: (context, healthProvider, child) {
-        debugPrint(
-          '[HomeScreen] Consumer builder called - hasPermissions: ${healthProvider.hasPermissions}, isLoading: ${healthProvider.isLoading}, _isLoadingHealth: $_isLoadingHealth',
-        );
-
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surface,
           body: SafeArea(

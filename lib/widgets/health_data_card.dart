@@ -7,10 +7,10 @@ class HealthDataCard extends StatelessWidget {
   final bool showWorkoutSessions;
 
   const HealthDataCard({
-    super.key,
+    Key? key,
     required this.healthData,
     this.showWorkoutSessions = false,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -30,39 +30,15 @@ class HealthDataCard extends StatelessWidget {
               // Header with icon and title
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.health_and_safety_rounded,
+                    Text(
+                    'Health & Fitness',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      size: 24,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Health & Fitness',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ]
               ),
               
               const SizedBox(height: 24),
@@ -327,7 +303,7 @@ class HealthDataCard extends StatelessWidget {
               ],
             ),
           ),
-        ),
+        ).toList(),
       ],
     );
   }
@@ -399,9 +375,9 @@ class HealthPermissionCard extends StatelessWidget {
   final VoidCallback onRequestPermissions;
 
   const HealthPermissionCard({
-    super.key,
+    Key? key,
     required this.onRequestPermissions,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

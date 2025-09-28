@@ -9,6 +9,7 @@ import '../services/gemini_model_service.dart';
 import '../services/fasting_service.dart';
 import '../models/fasting_settings.dart';
 import '../widgets/custom_alert.dart';
+import '../widgets/fasting_overview_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -52,6 +53,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _originalFastingEnabled = false;
   TimeOfDay _originalEatingStart = const TimeOfDay(hour: 12, minute: 0);
   double _originalEatingDurationHours = 8;
+
+  // Debug preview controls
+  double _debugStreakPreview = 0;
+  double _debugHoursPreview = 4;
+  bool _debugIsFastingPreview = false;
 
   // Change tracking
   bool _hasUnsavedChanges = false;
@@ -866,6 +872,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context,
                   ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withOpacity(0.4),
+                  ),
                 ),
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -900,8 +911,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withOpacity(0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withOpacity(0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 1.5,
+                          ),
                         ),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
@@ -920,6 +952,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context,
                   ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withOpacity(0.4),
+                  ),
                 ),
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -954,8 +991,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withOpacity(0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withOpacity(0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 1.5,
+                          ),
                         ),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
@@ -977,6 +1035,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               context,
             ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withOpacity(0.4),
+            ),
           ),
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -1011,8 +1074,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withOpacity(0.35),
+                      width: 1.2,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withOpacity(0.35),
+                      width: 1.2,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 1.5,
+                    ),
                   ),
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surface,
@@ -1263,37 +1347,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     key: const ValueKey('fasting-enabled'),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final double available = constraints.maxWidth;
-                          final double spacing = 12;
-                          final double itemWidth =
-                              available.isFinite ? (available - spacing) / 2 : 200;
-                          return Wrap(
-                            spacing: spacing,
-                            runSpacing: 12,
-                            children: [
-                              SizedBox(
-                                width: itemWidth,
-                                child: _buildScheduleChip(
-                                  icon: Icons.restaurant_menu,
-                                  label: 'Eating window',
-                                  value: '$eatingLabel hrs',
-                                ),
-                              ),
-                              SizedBox(
-                                width: itemWidth,
-                                child: _buildScheduleChip(
-                                  icon: Icons.nights_stay,
-                                  label: 'Fasting window',
-                                  value: '$fastingLabel hrs',
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 20),
                       _buildEatingStartPicker(theme, startLabel),
                       const SizedBox(height: 20),
                       _buildEatingDurationSlider(theme, fastingLabel),
@@ -1301,50 +1354,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
         ),
       ],
-    );
-  }
-
-  Widget _buildScheduleChip({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: theme.colorScheme.primary, size: 20),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -1584,7 +1593,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Text(
                   'Formula: (Protein × 4) + (Carbs × 4) + (Fat × 9)',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 10,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -2614,7 +2623,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
+
+        const SizedBox(height: 24),
+        Text(
+          'Fasting Card Preview',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('Eating'),
+              selected: !_debugIsFastingPreview,
+              onSelected: (selected) {
+                if (!selected) return;
+                setState(() => _debugIsFastingPreview = false);
+              },
+            ),
+            ChoiceChip(
+              label: const Text('Fasting'),
+              selected: _debugIsFastingPreview,
+              onSelected: (selected) {
+                if (!selected) return;
+                setState(() => _debugIsFastingPreview = true);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Hours remaining: ${_debugHoursPreview.toStringAsFixed(1)}h',
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Slider(
+          value: _debugHoursPreview,
+          min: 0.25,
+          max: 24,
+          divisions: 95,
+          label: '${_debugHoursPreview.toStringAsFixed(1)}h',
+          onChanged: (value) {
+            setState(() => _debugHoursPreview = value);
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Streak days preview: ${_debugStreakPreview.toStringAsFixed(0)}',
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Slider(
+          value: _debugStreakPreview,
+          min: 0,
+          max: 15,
+          divisions: 15,
+          label: _debugStreakPreview.toStringAsFixed(0),
+          onChanged: (value) {
+            setState(() => _debugStreakPreview = value);
+          },
+        ),
+        const SizedBox(height: 16),
+        _buildFastingPreviewCard(),
       ],
+    );
+  }
+
+  Widget _buildFastingPreviewCard() {
+    final now = DateTime.now();
+    final settingsSample = const FastingSettings(
+      enabled: true,
+      eatingStartMinutes: 12 * 60,
+      eatingDurationMinutes: 8 * 60,
+    );
+
+    final totalDuration =
+        _debugIsFastingPreview
+            ? settingsSample.fastingDuration
+            : settingsSample.eatingDuration;
+    final remainingMinutes = (_debugHoursPreview * 60).clamp(
+      1,
+      totalDuration.inMinutes.toDouble(),
+    );
+    final remaining = Duration(minutes: remainingMinutes.round());
+    final elapsed = totalDuration - remaining;
+
+    final status = FastingStatus(
+      enabled: true,
+      phase:
+          _debugIsFastingPreview ? FastingPhase.fasting : FastingPhase.eating,
+      phaseStart: now.subtract(elapsed),
+      phaseEnd: now.add(remaining),
+      reference: now,
+    );
+
+    return FastingOverviewCard(
+      status: status,
+      settings: settingsSample,
+      streakDays: _debugStreakPreview.round(),
+      timeRemaining: remaining,
     );
   }
 

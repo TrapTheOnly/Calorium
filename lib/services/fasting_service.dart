@@ -102,6 +102,15 @@ class FastingService {
     return settings.isWithinEatingWindow(time);
   }
 
+  static Future<Duration> eatingTimeRemaining(DateTime reference) async {
+    final settings = await getSettings();
+    final status = settings.statusAt(reference);
+    if (status.phase != FastingPhase.eating) {
+      return Duration.zero;
+    }
+    return status.nextChange.difference(reference);
+  }
+
   static List<String> fastingRecommendations() {
     return const [
       'Take a mindful pause before eating and drink a glass of water to re-align with your fasting window.',
@@ -138,7 +147,8 @@ class FastingService {
     final prefs = await SharedPreferences.getInstance();
     final violationDate = _toDateString(timestamp);
     final existing = prefs.getString(_streakAnchorDateKey);
-    DateTime? existingDate = existing != null ? DateTime.tryParse(existing) : null;
+    DateTime? existingDate =
+        existing != null ? DateTime.tryParse(existing) : null;
     final violationDateTime = DateTime.tryParse(violationDate);
 
     if (violationDateTime != null) {
