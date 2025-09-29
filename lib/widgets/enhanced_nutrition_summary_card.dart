@@ -315,7 +315,6 @@ class _EnhancedNutritionSummaryCardState extends State<EnhancedNutritionSummaryC
     final intakeProgress = target > 0 ? (intake / target).clamp(0.0, 1.0) : 0.0;
     final netProgress = target > 0 ? (net / target).clamp(0.0, 1.0) : 0.0;
     
-    final displayValue = hasHealthData ? net : intake;
     final displayProgress = hasHealthData ? netProgress : intakeProgress;
     final percentage = target > 0 ? (displayProgress * 100).round() : 0;
 
