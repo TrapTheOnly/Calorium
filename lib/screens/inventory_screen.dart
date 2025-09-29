@@ -32,10 +32,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   // Data for each tab
   List<Food> _allSimpleFoods = [];
   List<Food> _filteredSimpleFoods = [];
-  List<Food> _previousFilteredSimpleFoods = []; // Track previous state for animations
   List<Food> _allCompoundFoods = [];
   List<Food> _filteredCompoundFoods = [];
-  List<Food> _previousFilteredCompoundFoods = []; // Track previous state for animations
   List<CustomRecipe> _allCustomRecipes = [];
   List<CustomRecipe> _filteredCustomRecipes = [];
   
@@ -252,7 +250,6 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     final query = _simpleSearchController.text.toLowerCase();
     
     setState(() {
-      _previousFilteredSimpleFoods = _filteredSimpleFoods;
       _filteredSimpleFoods = _allSimpleFoods.where((food) {
         final matchesSearch = query.isEmpty || food.name.toLowerCase().contains(query);
         final matchesTags = _selectedTags.isEmpty || _selectedTags.every((tag) => food.tags.contains(tag));
@@ -265,7 +262,6 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     final query = _compoundSearchController.text.toLowerCase();
     
     setState(() {
-      _previousFilteredCompoundFoods = _filteredCompoundFoods;
       _filteredCompoundFoods = _allCompoundFoods.where((food) {
         return query.isEmpty || food.name.toLowerCase().contains(query);
       }).toList();

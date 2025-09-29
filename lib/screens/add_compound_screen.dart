@@ -347,7 +347,6 @@ class _AddCompoundScreenState extends State<AddCompoundScreen> {
                     if (components.isEmpty) return Container();
                     final component = components[index];
                     final food = component['food'] as Food;
-                    final amount = component['amount'] as double;
                     
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 14.0),

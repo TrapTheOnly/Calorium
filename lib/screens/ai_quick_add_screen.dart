@@ -629,7 +629,6 @@ class _AiQuickAddScreenState extends State<AiQuickAddScreen> {
   }
 
   Widget _buildAmountInput() {
-    final portionSize = _nutritionData?['defaultPortionSize'] ?? 100;
     final portionDescription =
         _nutritionData?['portionDescription'] ?? '1 serving';
 

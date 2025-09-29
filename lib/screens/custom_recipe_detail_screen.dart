@@ -22,7 +22,6 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   final TextEditingController _servingsController = TextEditingController();
   final TextEditingController _newTagController = TextEditingController();
   bool _isLogging = false;
-  final bool _isEditingDifficulty = false;
   String _tempDifficulty = '';
 
   @override

@@ -126,7 +126,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final themeMode = await SettingsService.getThemeMode();
     final calorieTarget = await SettingsService.getCalorieTarget();
     final age = await SettingsService.getAge();
     final weight = await SettingsService.getWeight();
@@ -1263,7 +1262,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     final localizations = MaterialLocalizations.of(context);
     final startLabel = localizations.formatTimeOfDay(_eatingStart);
-    final eatingLabel = _formatHours(_eatingDurationHours);
     final fastingLabel = _formatHours(24 - _eatingDurationHours);
 
     return Column(

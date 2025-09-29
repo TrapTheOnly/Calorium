@@ -1,6 +1,5 @@
 import 'package:intl/intl.dart';
 import '../models/fasting_advice.dart';
-import '../models/fasting_settings.dart';
 import 'fasting_service.dart';
 
 class FastingAdvisor {
