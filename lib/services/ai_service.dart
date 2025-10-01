@@ -7,6 +7,80 @@ class AiService {
   static const String _apiHost = 'generativelanguage.googleapis.com';
   static const String _generateContentPathPrefix = '/v1beta/models/';
   static const String _generateContentSuffix = ':generateContent';
+  static Never _handleEmptyCandidates(
+    Map<String, dynamic> data,
+    String context,
+  ) {
+    final promptFeedback = data['promptFeedback'];
+    if (promptFeedback is Map<String, dynamic>) {
+      print(
+        'Gemini prompt feedback ($context): ${json.encode(promptFeedback)}',
+      );
+      final blockReason = promptFeedback['blockReason'];
+      if (blockReason is String && blockReason.isNotEmpty) {
+        throw Exception('Gemini blocked the request: $blockReason');
+      }
+    }
+    throw Exception('No candidates in API response');
+  }
+
+  static String _extractResponseText(
+    Map<String, dynamic> data,
+    String context,
+  ) {
+    final candidates = data['candidates'];
+    if (candidates == null || candidates is! List || candidates.isEmpty) {
+      _handleEmptyCandidates(data, context);
+    }
+
+    final firstCandidate = candidates[0];
+    if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
+      throw Exception('Invalid candidate structure');
+    }
+
+    final finishReason = firstCandidate['finishReason'];
+    if (finishReason is String && finishReason.toUpperCase() == 'SAFETY') {
+      _handleEmptyCandidates(data, context);
+    }
+
+    final content = firstCandidate['content'];
+    if (content == null || content is! Map<String, dynamic>) {
+      throw Exception('No content in candidate');
+    }
+
+    final parts = content['parts'];
+    if (parts == null || parts is! List || parts.isEmpty) {
+      if (finishReason == 'MAX_TOKENS') {
+        throw Exception(
+          'Gemini stopped before returning content because the response hit the maximum output token limit. Try increasing maxOutputTokens or shortening the prompt.',
+        );
+      }
+      if (finishReason is String && finishReason.isNotEmpty) {
+        throw Exception(
+          'Gemini returned no content (finishReason: $finishReason)',
+        );
+      }
+      throw Exception('No parts in content');
+    }
+
+    final firstPart = parts[0];
+    if (firstPart == null || firstPart is! Map<String, dynamic>) {
+      throw Exception('Invalid part structure');
+    }
+
+    final text = firstPart['text'];
+    if (text == null || text is! String) {
+      throw Exception('No text in response part');
+    }
+
+    if (finishReason == 'MAX_TOKENS') {
+      print(
+        'Gemini truncated the response because it hit the maximum output token limit. Continuing with partial content.',
+      );
+    }
+
+    return text;
+  }
 
   static Uri _buildGenerateContentUri(String model, String apiKey) {
     final normalized = SettingsService.normalizeGeminiModelName(model);
@@ -142,35 +216,7 @@ EXAMPLE REASONING:
           throw Exception('Invalid response structure from API');
         }
 
-        final candidates = data['candidates'];
-        if (candidates == null || candidates is! List || candidates.isEmpty) {
-          throw Exception('No candidates in API response');
-        }
-
-        final firstCandidate = candidates[0];
-        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
-          throw Exception('Invalid candidate structure');
-        }
-
-        final content = firstCandidate['content'];
-        if (content == null || content is! Map<String, dynamic>) {
-          throw Exception('No content in candidate');
-        }
-
-        final parts = content['parts'];
-        if (parts == null || parts is! List || parts.isEmpty) {
-          throw Exception('No parts in content');
-        }
-
-        final firstPart = parts[0];
-        if (firstPart == null || firstPart is! Map<String, dynamic>) {
-          throw Exception('Invalid part structure');
-        }
-
-        final text = firstPart['text'];
-        if (text == null || text is! String) {
-          throw Exception('No text in response part');
-        }
+        final text = _extractResponseText(data, 'food analysis');
 
         // Parse the JSON response from Gemini
         try {
@@ -399,35 +445,7 @@ Ensure your activity level interpretation matches "$activityDescription" exactly
           throw Exception('Invalid response structure from API');
         }
 
-        final candidates = data['candidates'];
-        if (candidates == null || candidates is! List || candidates.isEmpty) {
-          throw Exception('No candidates in API response');
-        }
-
-        final firstCandidate = candidates[0];
-        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
-          throw Exception('Invalid candidate structure');
-        }
-
-        final content = firstCandidate['content'];
-        if (content == null || content is! Map<String, dynamic>) {
-          throw Exception('No content in candidate');
-        }
-
-        final parts = content['parts'];
-        if (parts == null || parts is! List || parts.isEmpty) {
-          throw Exception('No parts in content');
-        }
-
-        final firstPart = parts[0];
-        if (firstPart == null || firstPart is! Map<String, dynamic>) {
-          throw Exception('Invalid part structure');
-        }
-
-        final text = firstPart['text'];
-        if (text == null || text is! String) {
-          throw Exception('No text in response part');
-        }
+        final text = _extractResponseText(data, 'personalized macro targets');
 
         print('AI macro response text: $text');
 
@@ -605,35 +623,7 @@ Apply the user's correction to adjust the nutritional values per 100g (calories,
           throw Exception('Invalid response structure from API');
         }
 
-        final candidates = data['candidates'];
-        if (candidates == null || candidates is! List || candidates.isEmpty) {
-          throw Exception('No candidates in API response');
-        }
-
-        final firstCandidate = candidates[0];
-        if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
-          throw Exception('Invalid candidate structure');
-        }
-
-        final content = firstCandidate['content'];
-        if (content == null || content is! Map<String, dynamic>) {
-          throw Exception('No content in candidate');
-        }
-
-        final parts = content['parts'];
-        if (parts == null || parts is! List || parts.isEmpty) {
-          throw Exception('No parts in content');
-        }
-
-        final firstPart = parts[0];
-        if (firstPart == null || firstPart is! Map<String, dynamic>) {
-          throw Exception('Invalid part structure');
-        }
-
-        final text = firstPart['text'];
-        if (text == null || text is! String) {
-          throw Exception('No text in response part');
-        }
+        final text = _extractResponseText(data, 'food correction');
 
         // Parse the JSON response from Gemini
         try {

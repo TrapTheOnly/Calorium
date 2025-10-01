@@ -7,6 +7,80 @@ class NutritionAnalysisService {
   static const String _apiHost = 'generativelanguage.googleapis.com';
   static const String _pathPrefix = '/v1beta/models/';
   static const String _generateContentSuffix = ':generateContent';
+  static Never _handleEmptyCandidates(
+    Map<String, dynamic> data,
+    String context,
+  ) {
+    final promptFeedback = data['promptFeedback'];
+    if (promptFeedback is Map<String, dynamic>) {
+      print(
+        'Gemini prompt feedback ($context): ${json.encode(promptFeedback)}',
+      );
+      final blockReason = promptFeedback['blockReason'];
+      if (blockReason is String && blockReason.isNotEmpty) {
+        throw Exception('Gemini blocked the request: $blockReason');
+      }
+    }
+    throw Exception('No response from AI');
+  }
+
+  static String _extractResponseText(
+    Map<String, dynamic> data,
+    String context,
+  ) {
+    final candidates = data['candidates'];
+    if (candidates == null || candidates is! List || candidates.isEmpty) {
+      _handleEmptyCandidates(data, context);
+    }
+
+    final firstCandidate = candidates[0];
+    if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
+      throw Exception('Invalid candidate structure');
+    }
+
+    final finishReason = firstCandidate['finishReason'];
+    if (finishReason is String && finishReason.toUpperCase() == 'SAFETY') {
+      _handleEmptyCandidates(data, context);
+    }
+
+    final content = firstCandidate['content'];
+    if (content == null || content is! Map<String, dynamic>) {
+      throw Exception('No content in candidate');
+    }
+
+    final parts = content['parts'];
+    if (parts == null || parts is! List || parts.isEmpty) {
+      if (finishReason == 'MAX_TOKENS') {
+        throw Exception(
+          'Gemini stopped before returning content because the response hit the maximum output token limit. Try increasing maxOutputTokens or shortening the prompt.',
+        );
+      }
+      if (finishReason is String && finishReason.isNotEmpty) {
+        throw Exception(
+          'Gemini returned no content (finishReason: $finishReason)',
+        );
+      }
+      throw Exception('No parts in content');
+    }
+
+    final firstPart = parts[0];
+    if (firstPart == null || firstPart is! Map<String, dynamic>) {
+      throw Exception('Invalid part structure');
+    }
+
+    final text = firstPart['text'];
+    if (text == null || text is! String) {
+      throw Exception('No text in response part');
+    }
+
+    if (finishReason == 'MAX_TOKENS') {
+      print(
+        'Gemini truncated the response for $context because it hit the maximum output token limit. Continuing with partial content.',
+      );
+    }
+
+    return text;
+  }
 
   static Future<Uri> _buildRequestUri(
     String apiKey, {
@@ -200,53 +274,49 @@ Remember: Respond with ONLY the JSON object, no additional text.
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        final text = _extractResponseText(data, 'daily nutrition analysis');
 
-        if (text != null) {
-          try {
-            // Clean the response
-            String cleanedText = text.trim();
+        try {
+          // Clean the response
+          String cleanedText = text.trim();
 
-            // Remove markdown code block markers if present
-            if (cleanedText.startsWith('```json')) {
-              cleanedText = cleanedText.substring(7);
-            } else if (cleanedText.startsWith('```')) {
-              cleanedText = cleanedText.substring(3);
-            }
-
-            if (cleanedText.endsWith('```')) {
-              cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-            }
-
-            cleanedText = cleanedText.trim();
-
-            final analysisResult = json.decode(cleanedText);
-
-            // Validate the response structure
-            if (analysisResult['suggestions'] is List &&
-                analysisResult['motivationalQuote'] is String &&
-                (analysisResult['suggestions'] as List).length == 5) {
-              // Store the suggestions and quote
-              await SettingsService.setDailyAiSuggestions(
-                date,
-                (analysisResult['suggestions'] as List).cast<String>(),
-              );
-              await SettingsService.setAiQuote(
-                analysisResult['motivationalQuote'],
-              );
-              await SettingsService.setLastAiAnalysisDate(date);
-
-              return analysisResult;
-            } else {
-              throw Exception('Invalid response structure from AI');
-            }
-          } catch (e) {
-            print('Error parsing AI analysis response: $e');
-            print('AI Response: $text');
-            throw Exception('Invalid response format from AI: $e');
+          // Remove markdown code block markers if present
+          if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.substring(7);
+          } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.substring(3);
           }
-        } else {
-          throw Exception('No response from AI');
+
+          if (cleanedText.endsWith('```')) {
+            cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+          }
+
+          cleanedText = cleanedText.trim();
+
+          final analysisResult = json.decode(cleanedText);
+
+          // Validate the response structure
+          if (analysisResult['suggestions'] is List &&
+              analysisResult['motivationalQuote'] is String &&
+              (analysisResult['suggestions'] as List).length == 5) {
+            // Store the suggestions and quote
+            await SettingsService.setDailyAiSuggestions(
+              date,
+              (analysisResult['suggestions'] as List).cast<String>(),
+            );
+            await SettingsService.setAiQuote(
+              analysisResult['motivationalQuote'],
+            );
+            await SettingsService.setLastAiAnalysisDate(date);
+
+            return analysisResult;
+          } else {
+            throw Exception('Invalid response structure from AI');
+          }
+        } catch (e) {
+          print('Error parsing AI analysis response: $e');
+          print('AI Response: $text');
+          throw Exception('Invalid response format from AI: $e');
         }
       } else {
         final errorData = json.decode(response.body);
@@ -398,39 +468,35 @@ Respond with ONLY the JSON object, no additional text.
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        final text = _extractResponseText(data, 'weekly nutrition analysis');
 
-        if (text != null) {
-          try {
-            String cleanedText = text.trim();
+        try {
+          String cleanedText = text.trim();
 
-            if (cleanedText.startsWith('```json')) {
-              cleanedText = cleanedText.substring(7);
-            } else if (cleanedText.startsWith('```')) {
-              cleanedText = cleanedText.substring(3);
-            }
-
-            if (cleanedText.endsWith('```')) {
-              cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-            }
-
-            cleanedText = cleanedText.trim();
-
-            final weeklyAnalysis = json.decode(cleanedText);
-
-            // Store the weekly analysis
-            final weekKey =
-                '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
-            await SettingsService.setWeeklyAnalysis(weekKey, weeklyAnalysis);
-
-            return weeklyAnalysis;
-          } catch (e) {
-            print('Error parsing weekly analysis response: $e');
-            print('AI Response: $text');
-            throw Exception('Invalid response format from AI: $e');
+          if (cleanedText.startsWith('```json')) {
+            cleanedText = cleanedText.substring(7);
+          } else if (cleanedText.startsWith('```')) {
+            cleanedText = cleanedText.substring(3);
           }
-        } else {
-          throw Exception('No response from AI');
+
+          if (cleanedText.endsWith('```')) {
+            cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+          }
+
+          cleanedText = cleanedText.trim();
+
+          final weeklyAnalysis = json.decode(cleanedText);
+
+          // Store the weekly analysis
+          final weekKey =
+              '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
+          await SettingsService.setWeeklyAnalysis(weekKey, weeklyAnalysis);
+
+          return weeklyAnalysis;
+        } catch (e) {
+          print('Error parsing weekly analysis response: $e');
+          print('AI Response: $text');
+          throw Exception('Invalid response format from AI: $e');
         }
       } else {
         final errorData = json.decode(response.body);

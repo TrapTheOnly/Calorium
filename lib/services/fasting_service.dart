@@ -27,7 +27,7 @@ class FastingService {
     int? eatingStart = prefs.getInt(_eatingStartMinutesKey);
     int? eatingDuration = prefs.getInt(_eatingDurationMinutesKey);
 
-    if (eatingStart == null || eatingDuration == null) {
+    if (eatingDuration == null) {
       final legacyStart = prefs.getInt(_legacyFastingStartKey);
       final legacyDuration = prefs.getInt(_legacyFastingDurationKey);
 
