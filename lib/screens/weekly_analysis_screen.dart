@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/settings_service.dart';
 import '../services/nutrition_analysis_service.dart';
+import '../widgets/custom_alert.dart';
 
 class WeeklyAnalysisScreen extends StatefulWidget {
   final String weekStartDate;
@@ -25,13 +26,14 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
 
   Future<void> _loadWeeklyData() async {
     _hasApiKey = await SettingsService.hasGeminiApiKey();
-    
+
     if (_hasApiKey) {
       // Try to load existing analysis
       final startDate = DateTime.parse(widget.weekStartDate);
-      final weekKey = '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
+      final weekKey =
+          '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
       final existingAnalysis = await SettingsService.getWeeklyAnalysis(weekKey);
-      
+
       if (mounted) {
         setState(() {
           _weeklyData = existingAnalysis;
@@ -48,19 +50,20 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
     });
 
     try {
-      final result = await NutritionAnalysisService.generateWeeklySummary(widget.weekStartDate);
-      
+      final result = await NutritionAnalysisService.generateWeeklySummary(
+        widget.weekStartDate,
+      );
+
       if (result != null && mounted) {
         setState(() {
           _weeklyData = result;
           _isLoading = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Weekly analysis generated successfully!'),
-            backgroundColor: Colors.green,
-          ),
+
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'Weekly Analysis Ready',
+          message: 'Weekly analysis generated successfully!',
         );
       }
     } catch (e) {
@@ -68,12 +71,11 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
         setState(() {
           _isLoading = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error generating weekly analysis: $e'),
-            backgroundColor: Colors.red,
-          ),
+
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Weekly Analysis Failed',
+          message: 'Error generating weekly analysis: $e',
         );
       }
     }
@@ -101,8 +103,13 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: Icon(
+              Icons.home_outlined,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            onPressed:
+                () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
         ],
       ),
@@ -125,7 +132,9 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
                 _weekDisplayText,
                 style: TextStyle(
                   fontSize: 16,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
               const SizedBox(height: 32),
@@ -171,10 +180,14 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.2),
                     ),
                   ),
                   child: Column(
@@ -206,29 +219,35 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _generateWeeklyAnalysis,
+                          onPressed:
+                              _isLoading ? null : _generateWeeklyAnalysis,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onPrimary,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          icon: _isLoading
-                              ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Theme.of(context).colorScheme.onPrimary,
+                          icon:
+                              _isLoading
+                                  ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Theme.of(context).colorScheme.onPrimary,
+                                      ),
                                     ),
-                                  ),
-                                )
-                              : Icon(Icons.analytics, size: 20),
+                                  )
+                                  : Icon(Icons.analytics, size: 20),
                           label: Text(
-                            _isLoading ? 'Generating Analysis...' : 'Generate Weekly Analysis',
+                            _isLoading
+                                ? 'Generating Analysis...'
+                                : 'Generate Weekly Analysis',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -253,7 +272,8 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
   Widget _buildWeeklyAnalysisDisplay() {
     final summary = _weeklyData!['summary'] as Map<String, dynamic>;
     final insights = (_weeklyData!['insights'] as List).cast<String>();
-    final recommendations = (_weeklyData!['recommendations'] as List).cast<String>();
+    final recommendations =
+        (_weeklyData!['recommendations'] as List).cast<String>();
     final weeklyQuote = _weeklyData!['weeklyQuote'] as String;
 
     return Column(
@@ -296,9 +316,9 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
             ],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Summary Section
         _buildSection(
           'Weekly Summary',
@@ -307,142 +327,179 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
             children: [
               Row(
                 children: [
-                  _buildSummaryItem('Avg Calories', '${summary['averageCalories']} kcal', Colors.orange),
+                  _buildSummaryItem(
+                    'Avg Calories',
+                    '${summary['averageCalories']} kcal',
+                    Colors.orange,
+                  ),
                   const SizedBox(width: 8),
-                  _buildSummaryItem('Avg Protein', '${summary['averageProtein']}g', Colors.red),
+                  _buildSummaryItem(
+                    'Avg Protein',
+                    '${summary['averageProtein']}g',
+                    Colors.red,
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _buildSummaryItem('Avg Carbs', '${summary['averageCarbs']}g', Colors.amber),
+                  _buildSummaryItem(
+                    'Avg Carbs',
+                    '${summary['averageCarbs']}g',
+                    Colors.amber,
+                  ),
                   const SizedBox(width: 8),
-                  _buildSummaryItem('Avg Fat', '${summary['averageFat']}g', Colors.purple),
+                  _buildSummaryItem(
+                    'Avg Fat',
+                    '${summary['averageFat']}g',
+                    Colors.purple,
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  _buildStatusItem('Consistency', summary['consistency'], _getConsistencyColor(summary['consistency'])),
+                  _buildStatusItem(
+                    'Consistency',
+                    summary['consistency'],
+                    _getConsistencyColor(summary['consistency']),
+                  ),
                   const SizedBox(width: 8),
-                  _buildStatusItem('Target Adherence', summary['targetAdherence'], _getAdherenceColor(summary['targetAdherence'])),
+                  _buildStatusItem(
+                    'Target Adherence',
+                    summary['targetAdherence'],
+                    _getAdherenceColor(summary['targetAdherence']),
+                  ),
                 ],
               ),
             ],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Insights Section
         _buildSection(
           'Key Insights',
           Icons.lightbulb_outline,
           Column(
-            children: insights.asMap().entries.map((entry) {
-              int index = entry.key;
-              String insight = entry.value;
-              return Container(
-                margin: EdgeInsets.only(bottom: index < insights.length - 1 ? 12 : 0),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        shape: BoxShape.circle,
+            children:
+                insights.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  String insight = entry.value;
+                  return Container(
+                    margin: EdgeInsets.only(
+                      bottom: index < insights.length - 1 ? 12 : 0,
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withOpacity(0.2),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        insight,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          height: 1.4,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            insight,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Recommendations Section
         _buildSection(
           'Recommendations for Next Week',
           Icons.tips_and_updates,
           Column(
-            children: recommendations.asMap().entries.map((entry) {
-              int index = entry.key;
-              String recommendation = entry.value;
-              return Container(
-                margin: EdgeInsets.only(bottom: index < recommendations.length - 1 ? 12 : 0),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.secondary,
-                        borderRadius: BorderRadius.circular(12),
+            children:
+                recommendations.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  String recommendation = entry.value;
+                  return Container(
+                    margin: EdgeInsets.only(
+                      bottom: index < recommendations.length - 1 ? 12 : 0,
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.secondaryContainer.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.secondary.withOpacity(0.3),
                       ),
-                      child: Center(
-                        child: Text(
-                          '${index + 1}',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.secondary,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                color:
+                                    Theme.of(context).colorScheme.onSecondary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        recommendation,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          height: 1.4,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            recommendation,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              height: 1.4,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Refresh Button
         SizedBox(
           width: double.infinity,
@@ -456,24 +513,22 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            icon: _isLoading
-                ? SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
+            icon:
+                _isLoading
+                    ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.primary,
+                        ),
                       ),
-                    ),
-                  )
-                : Icon(Icons.refresh, size: 18),
+                    )
+                    : Icon(Icons.refresh, size: 18),
             label: Text(
               _isLoading ? 'Regenerating...' : 'Regenerate Analysis',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ),
@@ -542,9 +597,7 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-          ),
+          border: Border.all(color: color.withOpacity(0.3)),
         ),
         child: Column(
           children: [
@@ -581,17 +634,11 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withOpacity(0.3),
-          ),
+          border: Border.all(color: color.withOpacity(0.3)),
         ),
         child: Column(
           children: [
-            Icon(
-              _getStatusIcon(value),
-              color: color,
-              size: 24,
-            ),
+            Icon(_getStatusIcon(value), color: color, size: 24),
             const SizedBox(height: 8),
             Text(
               value,
@@ -646,12 +693,14 @@ class _WeeklyAnalysisScreenState extends State<WeeklyAnalysisScreen> {
   }
 
   IconData _getStatusIcon(String status) {
-    if (status.toLowerCase().contains('high') || status.toLowerCase().contains('excellent')) {
+    if (status.toLowerCase().contains('high') ||
+        status.toLowerCase().contains('excellent')) {
       return Icons.trending_up;
-    } else if (status.toLowerCase().contains('medium') || status.toLowerCase().contains('good')) {
+    } else if (status.toLowerCase().contains('medium') ||
+        status.toLowerCase().contains('good')) {
       return Icons.trending_flat;
     } else {
       return Icons.trending_down;
     }
   }
-} 
+}

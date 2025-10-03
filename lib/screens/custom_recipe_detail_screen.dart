@@ -23,6 +23,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   final TextEditingController _newTagController = TextEditingController();
   bool _isLogging = false;
   String _tempDifficulty = '';
+  TimeOfDay _selectedLogTime = const TimeOfDay(hour: 14, minute: 0);
 
   @override
   void initState() {
@@ -589,6 +590,69 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            InkWell(
+              onTap: _isLogging ? null : _pickLogTime,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withOpacity(0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Time eaten',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            MaterialLocalizations.of(
+                              context,
+                            ).formatTimeOfDay(_selectedLogTime),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color:
+                                  Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.edit_outlined,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
@@ -760,6 +824,30 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     }
   }
 
+  Future<void> _pickLogTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedLogTime,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedLogTime = picked;
+      });
+    }
+  }
+
+  DateTime _composeLogDateTime() {
+    final now = DateTime.now();
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+      _selectedLogTime.hour,
+      _selectedLogTime.minute,
+    );
+  }
+
   Future<void> _logRecipe() async {
     final servingsText = _servingsController.text.trim();
     if (servingsText.isEmpty) {
@@ -781,13 +869,15 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     setState(() => _isLogging = true);
 
     try {
-      final now = DateTime.now();
+      final logDateTime = _composeLogDateTime();
+      final logDateString =
+          '${logDateTime.year}-${logDateTime.month.toString().padLeft(2, '0')}-${logDateTime.day.toString().padLeft(2, '0')}';
 
       final logEntry = LogEntry(
         foodId: _recipe.foodId!, // Use the linked food ID
         amount: 100.0, // Use 100g as base amount for custom recipes
-        date:
-            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        date: logDateString,
+        loggedAt: logDateTime,
         portions: servings, // Use portions field for servings
         foodName: _recipe.name,
         calories: _recipe.calories / _recipe.servings, // Per serving calories

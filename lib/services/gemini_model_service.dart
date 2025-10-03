@@ -5,7 +5,7 @@ class GeminiModelService {
   static const String _host = 'generativelanguage.googleapis.com';
   static const List<String> _fallbackModels = [
     'gemini-2.0-flash',
-    'gemini-1.5-flash-latest'
+    'gemini-2.0-flash',
   ];
 
   /// Fetches Gemini models that support content generation for the provided API key.

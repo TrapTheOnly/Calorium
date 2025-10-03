@@ -1,8 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
 import '../screens/ai_quick_add_screen.dart';
 import '../screens/inventory_screen.dart';
 
 class AddFoodOptionsDialog extends StatelessWidget {
+  static Future<void> show(
+    BuildContext context, {
+    required String date,
+    String title = 'Quick Add',
+    String subtitle = 'Pick how you want to add food',
+    VoidCallback? onComplete,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: AddFoodOptionsDialog(
+              date: date,
+              title: title,
+              subtitle: subtitle,
+              onComplete: onComplete,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   final String date;
   final String title;
   final String subtitle;
@@ -18,175 +51,245 @@ class AddFoodOptionsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    
-    // Responsive sizing based on screen dimensions
-    final isTablet = screenWidth > 600;
-    final dialogWidth = isTablet ? 420.0 : screenWidth * 0.92;
-    final maxDialogHeight = screenHeight * 0.6;
-    
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-      ),
-      elevation: 0,
-      backgroundColor: Colors.transparent,
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+
+    final isTablet = size.width > 600;
+    final dialogWidth = isTablet ? 420.0 : size.width * 0.92;
+
+    return Material(
+      color: Colors.transparent,
       child: Container(
-        width: dialogWidth,
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         constraints: BoxConstraints(
-          maxHeight: maxDialogHeight,
-          minHeight: 240,
+          maxWidth: 560,
         ),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(28),
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context).shadowColor.withOpacity(0.1),
+              color: theme.shadowColor.withOpacity(0.12),
               blurRadius: 20,
-              offset: const Offset(0, 8),
+              offset: const Offset(0, 12),
             ),
           ],
         ),
-        child: Padding(
-          padding: EdgeInsets.all(isTablet ? 24 : 20),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header with improved spacing
-              _buildHeader(context, isTablet),
-              
-              SizedBox(height: isTablet ? 24 : 20),
-              
-              // Option Cards with improved design
-              _buildModernOptionCard(
-                context: context,
-                title: 'AI Quick Scan',
-                subtitle: 'Take a photo and let AI analyze the food',
-                icon: Icons.camera_alt_rounded,
-                iconColor: Theme.of(context).colorScheme.primary,
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AiQuickAddScreen(date: date),
+              _CompactHeader(title: title, subtitle: subtitle, date: date),
+              // Scrollable content to avoid overflow on small screens
+              SingleChildScrollView(
+                primary: false,
+                padding: EdgeInsets.fromLTRB(
+                  isTablet ? 20 : 16,
+                  isTablet ? 12 : 10,
+                  isTablet ? 20 : 16,
+                  isTablet ? 8 : 6,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _OptionCard(
+                      title: 'AI Quick Scan',
+                      subtitle:
+                          'Snap a photo and let AI log nutrition for you instantly.',
+                      icon: Icons.bolt_rounded,
+                      gradientStart: theme.colorScheme.primary,
+                      gradientEnd:
+                          theme.colorScheme.primary.withOpacity(0.75),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AiQuickAddScreen(date: date),
+                          ),
+                        );
+                        onComplete?.call();
+                      },
+                      isTablet: isTablet,
                     ),
-                  );
-                  onComplete?.call();
-                },
-                isTablet: isTablet,
-              ),
-              
-              SizedBox(height: isTablet ? 14 : 12),
-              
-              _buildModernOptionCard(
-                context: context,
-                title: 'From Inventory',
-                subtitle: 'Select from your saved foods or search database',
-                icon: Icons.inventory_2_rounded,
-                iconColor: Theme.of(context).colorScheme.primary,
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => InventoryScreen(date: date),
+                    SizedBox(height: isTablet ? 10 : 8),
+                    _OptionCard(
+                      title: 'From Inventory',
+                      subtitle:
+                          'Browse your saved foods or search the database.',
+                      icon: Icons.inventory_2_rounded,
+                      gradientStart: theme.colorScheme.secondary,
+                      gradientEnd:
+                          theme.colorScheme.secondary.withOpacity(0.75),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => InventoryScreen(date: date),
+                          ),
+                        );
+                        onComplete?.call();
+                      },
+                      isTablet: isTablet,
                     ),
-                  );
-                  onComplete?.call();
-                },
-                isTablet: isTablet,
+                    SizedBox(height: isTablet ? 10 : 8),
+                    _CancelButton(isTablet: isTablet),
+                  ],
+                ),
               ),
-              
-              SizedBox(height: isTablet ? 20 : 16),
-              
-              // Cancel button with improved design
-              _buildCancelButton(context, isTablet),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildHeader(BuildContext context, bool isTablet) {
-    return Column(
-      children: [
-        // Title with responsive font size
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: isTablet ? 20 : 18,
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.onSurface,
-            letterSpacing: -0.5,
+class _CompactHeader extends StatelessWidget {
+  const _CompactHeader({
+    required this.title,
+    required this.subtitle,
+    required this.date,
+  });
+
+  final String title;
+  final String subtitle;
+  final String date;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    String? prettyDate;
+    try {
+      prettyDate = DateFormat.MMMEd().format(DateTime.parse(date));
+    } catch (_) {}
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.restaurant_outlined,
+              color: theme.colorScheme.onPrimary,
+              size: 18,
+            ),
           ),
-          textAlign: TextAlign.center,
-        ),
-        SizedBox(height: isTablet ? 8 : 6),
-        
-        // Subtitle with improved styling
-        Text(
-          subtitle,
-          style: TextStyle(
-            fontSize: isTablet ? 14 : 13,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            height: 1.3,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                if (prettyDate != null)
+                  Text(
+                    prettyDate,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
           ),
-          textAlign: TextAlign.center,
-        ),
-      ],
+        ],
+      ),
     );
   }
+}
 
-  Widget _buildModernOptionCard({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color iconColor,
-    required VoidCallback onTap,
-    required bool isTablet,
-  }) {
+class _OptionCard extends StatelessWidget {
+  const _OptionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.gradientStart,
+    required this.gradientEnd,
+    required this.onTap,
+    required this.isTablet,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color gradientStart;
+  final Color gradientEnd;
+  final VoidCallback onTap;
+  final bool isTablet;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        splashColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-        highlightColor: Theme.of(context).colorScheme.primary.withOpacity(0.05),
-        child: Container(
+        borderRadius: BorderRadius.circular(16),
+        splashColor: gradientStart.withOpacity(0.15),
+        highlightColor: gradientStart.withOpacity(0.08),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           width: double.infinity,
-          padding: EdgeInsets.all(isTablet ? 18 : 16),
+          padding: EdgeInsets.all(isTablet ? 14 : 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                gradientStart.withOpacity(0.18),
+                gradientEnd.withOpacity(0.14),
+              ],
+            ),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              color: gradientStart.withOpacity(0.3),
               width: 1,
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Modern icon container without glow
               Container(
                 padding: EdgeInsets.all(isTablet ? 12 : 10),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(
+                    colors: [gradientStart, gradientEnd],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: gradientStart.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
                 child: Icon(
                   icon,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  size: isTablet ? 22 : 20,
+                  color: theme.colorScheme.onPrimary,
+                  size: isTablet ? 20 : 18,
                 ),
               ),
-              
-              SizedBox(width: isTablet ? 16 : 14),
-              
-              // Improved text content
+              SizedBox(width: isTablet ? 12 : 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,36 +297,35 @@ class AddFoodOptionsDialog extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: isTablet ? 16 : 15,
+                        fontSize: isTablet ? 15 : 14,
                         fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface,
-                        letterSpacing: -0.2,
+                        letterSpacing: -0.3,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
-                    SizedBox(height: isTablet ? 4 : 3),
+                    SizedBox(height: 4),
                     Text(
                       subtitle,
                       style: TextStyle(
                         fontSize: isTablet ? 12 : 11,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        height: 1.2,
+                        height: 1.25,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-              
-              // Modern arrow with better styling
+              SizedBox(width: isTablet ? 12 : 10),
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: EdgeInsets.all(isTablet ? 10 : 8),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                  color: theme.colorScheme.surface.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: isTablet ? 16 : 14,
+                  Icons.arrow_forward_rounded,
+                  color: gradientStart,
+                  size: isTablet ? 18 : 16,
                 ),
               ),
             ],
@@ -232,53 +334,35 @@ class AddFoodOptionsDialog extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildCancelButton(BuildContext context, bool isTablet) {
+class _CancelButton extends StatelessWidget {
+  const _CancelButton({required this.isTablet});
+
+  final bool isTablet;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SizedBox(
       width: double.infinity,
       child: TextButton(
         onPressed: () => Navigator.pop(context),
         style: TextButton.styleFrom(
-          padding: EdgeInsets.symmetric(
-            horizontal: isTablet ? 24 : 20,
-            vertical: isTablet ? 12 : 10,
+          padding: EdgeInsets.symmetric(vertical: isTablet ? 16 : 14),
+          backgroundColor:
+              theme.colorScheme.surfaceContainerHighest.withOpacity(0.45),
+          foregroundColor: theme.colorScheme.onSurfaceVariant,
+          textStyle: TextStyle(
+            fontSize: isTablet ? 15 : 14,
+            fontWeight: FontWeight.w600,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        ),
-        child: Text(
-          'Cancel',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontSize: isTablet ? 14 : 13,
-            fontWeight: FontWeight.w500,
+            borderRadius: BorderRadius.circular(18),
           ),
         ),
+        child: const Text('Cancel'),
       ),
     );
   }
-
-  /// Static method to show the dialog
-  static Future<void> show(
-    BuildContext context, {
-    required String date,
-    String title = 'Add Food Entry',
-    String subtitle = 'Choose how you want to add food to your log',
-    VoidCallback? onComplete,
-  }) {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (BuildContext context) {
-        return AddFoodOptionsDialog(
-          date: date,
-          title: title,
-          subtitle: subtitle,
-          onComplete: onComplete,
-        );
-      },
-    );
-  }
-} 
+}

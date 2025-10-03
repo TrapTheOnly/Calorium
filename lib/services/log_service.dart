@@ -1,17 +1,19 @@
 import '../models/log_entry.dart';
 import 'database_service.dart';
+import 'scheduler_service.dart';
 
 class LogService {
   Future<List<LogEntry>> getLogEntriesByDate(String date) async {
     final db = await DatabaseService.instance.database;
     final List<Map<String, dynamic>> maps = await db.rawQuery(
       '''
-      SELECT l.id, l.foodId, l.amount, l.date, l.portions, 
-            f.name, f.calories, f.fat, f.carbs, f.protein, 
+      SELECT l.id, l.foodId, l.amount, l.date, l.portions,
+            f.name, f.calories, f.fat, f.carbs, f.protein,
             f.defaultPortionSize, f.portionDescription,
             l.loggedAt
       FROM logs l JOIN foods f ON f.id = l.foodId
       WHERE l.date = ?
+      ORDER BY l.loggedAt ASC, l.id ASC
     ''',
       [date],
     );
@@ -51,21 +53,31 @@ class LogService {
 
   Future<int> insertLogEntry(LogEntry entry) async {
     final db = await DatabaseService.instance.database;
-    return await db.insert('logs', entry.toMap());
+    final id = await db.insert('logs', entry.toMap());
+    await SchedulerService.scheduleDailySummaryNotification();
+    return id;
   }
 
   Future<int> updateLogEntry(LogEntry entry) async {
     final db = await DatabaseService.instance.database;
-    return await db.update(
+    final updated = await db.update(
       'logs',
-      {'amount': entry.amount},
+      {
+        'amount': entry.amount,
+        'portions': entry.portions,
+        'loggedAt': entry.loggedAt.millisecondsSinceEpoch,
+      },
       where: 'id = ?',
       whereArgs: [entry.id],
     );
+    await SchedulerService.scheduleDailySummaryNotification();
+    return updated;
   }
 
   Future<int> deleteLogEntry(int id) async {
     final db = await DatabaseService.instance.database;
-    return await db.delete('logs', where: 'id = ?', whereArgs: [id]);
+    final deleted = await db.delete('logs', where: 'id = ?', whereArgs: [id]);
+    await SchedulerService.scheduleDailySummaryNotification();
+    return deleted;
   }
 }

@@ -126,7 +126,7 @@ class HealthDataCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'ACtive',
+                                'Active',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),

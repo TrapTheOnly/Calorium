@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
 import '../services/nutrition_analysis_service.dart';
+import 'custom_alert.dart';
 
 class AiSuggestionsCard extends StatefulWidget {
   final String date;
@@ -27,15 +28,17 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
   Future<void> _loadAiData() async {
     // Check if user has API key
     _hasApiKey = await SettingsService.hasGeminiApiKey();
-    
+
     // Check if user has enough data for analysis
     _hasEnoughData = await NutritionAnalysisService.hasEnoughDataForAnalysis();
-    
+
     if (_hasApiKey && _hasEnoughData) {
       // Load existing suggestions for this date
-      final suggestions = await SettingsService.getDailyAiSuggestions(widget.date);
+      final suggestions = await SettingsService.getDailyAiSuggestions(
+        widget.date,
+      );
       final quote = await SettingsService.getAiQuote();
-      
+
       if (mounted) {
         setState(() {
           _suggestions = suggestions;
@@ -53,20 +56,21 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
     });
 
     try {
-      final result = await NutritionAnalysisService.analyzeDailyNutrition(widget.date);
-      
+      final result = await NutritionAnalysisService.analyzeDailyNutrition(
+        widget.date,
+      );
+
       if (result != null && mounted) {
         setState(() {
           _suggestions = (result['suggestions'] as List).cast<String>();
           _motivationalQuote = result['motivationalQuote'];
           _isLoading = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('AI analysis completed successfully!'),
-            backgroundColor: Colors.green,
-          ),
+
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'AI Analysis Complete',
+          message: 'AI analysis completed successfully!',
         );
       }
     } catch (e) {
@@ -74,12 +78,11 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
         setState(() {
           _isLoading = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error generating AI suggestions: $e'),
-            backgroundColor: Colors.red,
-          ),
+
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'AI Analysis Failed',
+          message: 'Error generating AI suggestions: $e',
         );
       }
     }
@@ -96,8 +99,9 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
     if (!_hasEnoughData) {
       return Container(
         width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 8),
         child: Card(
+          margin: EdgeInsets.zero,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -144,8 +148,9 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
     if (_suggestions != null && _suggestions!.isNotEmpty) {
       return Container(
         width: double.infinity,
-        margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 8),
         child: Card(
+          margin: EdgeInsets.zero,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -160,8 +165,12 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                  Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
+                  Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withOpacity(0.3),
+                  Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withOpacity(0.1),
                 ],
               ),
               borderRadius: BorderRadius.circular(16),
@@ -203,7 +212,10 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                               'Personalized suggestions for today',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -211,19 +223,23 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Motivational Quote
                   if (_motivationalQuote != null) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface.withOpacity(0.8),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surface.withOpacity(0.8),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.2),
                         ),
                       ),
                       child: Column(
@@ -249,7 +265,7 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                     ),
                     const SizedBox(height: 20),
                   ],
-                  
+
                   // Suggestions
                   Text(
                     'Today\'s Suggestions',
@@ -260,19 +276,25 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   ..._suggestions!.asMap().entries.map((entry) {
                     int index = entry.key;
                     String suggestion = entry.value;
-                    
+
                     return Container(
-                      margin: EdgeInsets.only(bottom: index < _suggestions!.length - 1 ? 12 : 0),
+                      margin: EdgeInsets.only(
+                        bottom: index < _suggestions!.length - 1 ? 12 : 0,
+                      ),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface.withOpacity(0.6),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surface.withOpacity(0.6),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
                         ),
                       ),
                       child: Row(
@@ -289,7 +311,8 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                               child: Text(
                                 '${index + 1}',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onPrimary,
+                                  color:
+                                      Theme.of(context).colorScheme.onPrimary,
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -311,9 +334,9 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                       ),
                     );
                   }),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // Refresh Button
                   SizedBox(
                     width: double.infinity,
@@ -321,24 +344,27 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                       onPressed: _isLoading ? null : _generateSuggestions,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.primary,
-                        side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        side: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: _isLoading
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).colorScheme.primary,
+                      icon:
+                          _isLoading
+                              ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Theme.of(context).colorScheme.primary,
+                                  ),
                                 ),
-                              ),
-                            )
-                          : Icon(Icons.refresh, size: 18),
+                              )
+                              : Icon(Icons.refresh, size: 18),
                       label: Text(
                         _isLoading ? 'Analyzing...' : 'Refresh Analysis',
                         style: const TextStyle(
@@ -405,18 +431,19 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              icon: _isLoading
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).colorScheme.onPrimary,
+              icon:
+                  _isLoading
+                      ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Theme.of(context).colorScheme.onPrimary,
+                          ),
                         ),
-                      ),
-                    )
-                  : Icon(Icons.insights, size: 18),
+                      )
+                      : Icon(Icons.insights, size: 18),
               label: Text(
                 _isLoading ? 'Analyzing...' : 'Generate AI Insights',
                 style: const TextStyle(
@@ -430,4 +457,4 @@ class _AiSuggestionsCardState extends State<AiSuggestionsCard> {
       ),
     );
   }
-} 
+}

@@ -8,23 +8,29 @@ import 'utils/theme_provider.dart';
 import 'utils/health_permission_provider.dart';
 import 'services/scheduler_service.dart';
 
+final GlobalKey<NavigatorState> _appNavigatorKey = GlobalKey<NavigatorState>();
+
 // Import debug service for easy access during development
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-  
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-  ));
-  
-  OpenFoodAPIConfiguration.userAgent = UserAgent(name: 'Calorium App - Flutter - Version 1.0');
+  SchedulerService.configureNavigator(_appNavigatorKey);
+
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+  );
+
+  OpenFoodAPIConfiguration.userAgent = UserAgent(
+    name: 'Calorium App - Flutter - Version 1.0',
+  );
   OpenFoodAPIConfiguration.globalLanguages = [OpenFoodFactsLanguage.ENGLISH];
   OpenFoodAPIConfiguration.globalCountry = OpenFoodFactsCountry.USA;
-  OpenFoodAPIConfiguration.globalUser = User(userId: 'calorie_tracker_app', password: 'nx9*HCx8RJ3YP&WH');
+  OpenFoodAPIConfiguration.globalUser = User(
+    userId: 'calorie_tracker_app',
+    password: 'nx9*HCx8RJ3YP&WH',
+  );
 
   // Initialize scheduler service for AI nutrition analysis
   await SchedulerService.initialize();
@@ -47,7 +53,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    
+
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
         ColorScheme lightScheme;
@@ -72,19 +78,14 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'Calorium',
           debugShowCheckedModeBanner: false,
-          
-          theme: ThemeData(
-            useMaterial3: true,
-            colorScheme: lightScheme,
-          ),
-          
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            colorScheme: darkScheme,
-          ),
-          
+
+          theme: ThemeData(useMaterial3: true, colorScheme: lightScheme),
+
+          darkTheme: ThemeData(useMaterial3: true, colorScheme: darkScheme),
+
           themeMode: themeProvider.themeMode,
-          
+
+          navigatorKey: _appNavigatorKey,
           home: const HomeScreen(),
         );
       },

@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/fasting_settings.dart';
+import 'settings_service.dart';
 
 class FastingStreak {
   const FastingStreak({required this.days, this.anchorDate});
@@ -74,6 +75,7 @@ class FastingService {
   static Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_fastingEnabledKey, enabled);
+    await SettingsService.setFastingNotificationsEnabled(enabled);
   }
 
   static Future<void> setEatingStartMinutes(int minutes) async {

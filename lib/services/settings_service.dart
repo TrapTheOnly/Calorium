@@ -1,10 +1,12 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
+import '../models/fasting_settings.dart';
+
 class SettingsService {
   static const String _apiKeyKey = 'gemini_api_key';
   static const String _geminiModelKey = 'gemini_model';
-  static const String _defaultGeminiModel = 'gemini-1.5-flash-latest';
+  static const String _defaultGeminiModel = 'gemini-2.0-flash';
   static const String _themeKey = 'theme_mode';
   static const String _calorieTargetKey = 'calorie_target';
   static const String _ageKey = 'age';
@@ -20,6 +22,16 @@ class SettingsService {
   static const String _lastAiAnalysisDateKey = 'last_ai_analysis_date';
   static const String _aiQuoteKey = 'ai_quote';
   static const String _weeklyAnalysisKey = 'weekly_analysis';
+  static const String _fastingNotificationsKey =
+      'fasting_notifications_enabled';
+  static const String _dailySummaryNotificationsKey =
+      'daily_summary_notifications_enabled';
+  static const String _dailySummaryTimeKey =
+      'daily_summary_notification_minutes';
+  static const String _weeklyAnalysisNotificationsKey =
+      'weekly_analysis_notifications_enabled';
+  static const String _weeklyAnalysisTimeKey =
+      'weekly_analysis_notification_minutes';
 
   // API Key methods
   static Future<void> setGeminiApiKey(String apiKey) async {
@@ -183,6 +195,69 @@ class SettingsService {
     }
 
     return null;
+  }
+
+  // Notification preferences
+  static Future<void> setFastingNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_fastingNotificationsKey, enabled);
+  }
+
+  static Future<bool> getFastingNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_fastingNotificationsKey) ?? false;
+  }
+
+  static Future<void> setDailySummaryNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dailySummaryNotificationsKey, enabled);
+  }
+
+  static Future<bool> getDailySummaryNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_dailySummaryNotificationsKey) ?? true;
+  }
+
+  static Future<void> setDailySummaryNotificationTimeMinutes(
+    int minutes,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _dailySummaryTimeKey,
+      minutes.clamp(0, FastingSettings.minutesPerDay - 1),
+    );
+  }
+
+  static Future<int> getDailySummaryNotificationTimeMinutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_dailySummaryTimeKey) ?? (22 * 60); // 10:00 PM
+  }
+
+  static Future<void> setWeeklyAnalysisNotificationsEnabled(
+    bool enabled,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_weeklyAnalysisNotificationsKey, enabled);
+  }
+
+  static Future<bool> getWeeklyAnalysisNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_weeklyAnalysisNotificationsKey) ?? false;
+  }
+
+  static Future<void> setWeeklyAnalysisNotificationTimeMinutes(
+    int minutes,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _weeklyAnalysisTimeKey,
+      minutes.clamp(0, FastingSettings.minutesPerDay - 1),
+    );
+  }
+
+  static Future<int> getWeeklyAnalysisNotificationTimeMinutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_weeklyAnalysisTimeKey) ?? (18 * 60); // 6:00 PM
   }
 
   // Check if we have complete profile for AI analysis

@@ -84,7 +84,7 @@ class IngredientScannerService {
 
   static Future<Uri> _buildRequestUri(
     String apiKey, {
-    String fallbackModel = 'gemini-1.5-flash-latest',
+    String fallbackModel = 'gemini-2.0-flash',
   }) async {
     final model = await SettingsService.getGeminiModel(
       fallbackModel: fallbackModel,
@@ -173,7 +173,7 @@ Focus on ingredients that would be useful for meal preparation. Ignore non-food 
 
       final requestUri = await _buildRequestUri(
         apiKey,
-        fallbackModel: 'gemini-1.5-flash-latest',
+        fallbackModel: 'gemini-2.0-flash',
       );
 
       final response = await http.post(

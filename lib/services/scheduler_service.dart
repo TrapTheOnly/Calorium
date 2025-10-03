@@ -1,7 +1,14 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import '../models/fasting_settings.dart';
+import '../screens/daily_log_screen.dart';
+import '../screens/weekly_analysis_screen.dart';
+import 'database_service.dart';
+import 'fasting_service.dart';
 import 'nutrition_analysis_service.dart';
 import 'settings_service.dart';
 
@@ -9,6 +16,20 @@ class SchedulerService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static bool _isInitialized = false;
+  static final DateFormat _timeFormatter = DateFormat.jm();
+  static GlobalKey<NavigatorState>? _navigatorKey;
+
+  static const int _dailyAnalysisNotificationId = 1000;
+  static const int _weeklyAnalysisNotificationId = 2000;
+  static const int _analysisCompletedNotificationId = 3000;
+  static const int _weeklyCompletedNotificationId = 4000;
+  static const int _persistentEatingWindowNotificationId = 5010;
+  static const int _fastingStartNotificationId = 5100;
+  static const int _fastingEndNotificationId = 5101;
+  static const int _dailySummaryNotificationId = 5200;
+  static const String _payloadDailyAnalysisPrefix = 'navigate:daily_analysis:';
+  static const String _payloadWeeklyAnalysisPrefix =
+      'navigate:weekly_analysis:';
 
   /// Initialize the notification system
   static Future<void> initialize() async {
@@ -18,7 +39,7 @@ class SchedulerService {
       tz.initializeTimeZones();
 
       const androidSettings = AndroidInitializationSettings(
-        '@mipmap/ic_launcher',
+        '@drawable/ic_notification_calorium',
       );
       const iosSettings = DarwinInitializationSettings(
         requestAlertPermission: true,
@@ -31,7 +52,10 @@ class SchedulerService {
         iOS: iosSettings,
       );
 
-      await _notifications.initialize(initSettings);
+      await _notifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _handleNotificationResponse,
+      );
 
       // Request permissions
       await _requestPermissions();
@@ -43,6 +67,11 @@ class SchedulerService {
       // Mark as initialized to prevent repeated failed attempts
       _isInitialized = true;
     }
+  }
+
+  /// Provide navigator access for notification taps
+  static void configureNavigator(GlobalKey<NavigatorState> navigatorKey) {
+    _navigatorKey = navigatorKey;
   }
 
   static Future<void> _requestPermissions() async {
@@ -64,6 +93,93 @@ class SchedulerService {
     }
   }
 
+  static tz.TZDateTime _nextInstanceOfMinutes(
+    int minutesOfDay,
+    tz.TZDateTime reference,
+  ) {
+    final hours = minutesOfDay ~/ 60;
+    final minutes = minutesOfDay % 60;
+    var scheduled = tz.TZDateTime(
+      tz.local,
+      reference.year,
+      reference.month,
+      reference.day,
+      hours,
+      minutes,
+    );
+    if (!scheduled.isAfter(reference)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
+  }
+
+  static String _formatTime(tz.TZDateTime time) {
+    return _timeFormatter.format(time.toLocal());
+  }
+
+  static double _percentage(double value, double? target) {
+    if (target == null || target <= 0) {
+      return 0;
+    }
+    return (value / target * 100).clamp(0, 999);
+  }
+
+  static String _formatMacroProgress(
+    String label,
+    double consumed,
+    double? target,
+  ) {
+    final percent = _percentage(consumed, target);
+    final roundedPercent = percent.toStringAsFixed(percent >= 100 ? 0 : 1);
+    final valueString = consumed.toStringAsFixed(consumed >= 100 ? 0 : 1);
+    final targetString =
+        target != null && target > 0 ? target.toStringAsFixed(0) : '—';
+    return '$label: $valueString${label == 'Calories' ? ' kcal' : 'g'}'
+        ' / $targetString (${roundedPercent}%)';
+  }
+
+  static String _percentLabel(String label, double value, double? target) {
+    if (target == null || target <= 0) {
+      return '$label —';
+    }
+    final pct = _percentage(value, target).round();
+    return '$label ${pct.toInt()}%';
+  }
+
+  static Future<Map<String, double>> _loadDailyTotals(String date) async {
+    final db = await DatabaseService.instance.database;
+    final result = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(f.calories * l.amount * l.portions / 100) as totalCalories,
+        SUM(f.fat * l.amount * l.portions / 100) as totalFat,
+        SUM(f.carbs * l.amount * l.portions / 100) as totalCarbs,
+        SUM(f.protein * l.amount * l.portions / 100) as totalProtein
+      FROM logs l
+      JOIN foods f ON l.foodId = f.id
+      WHERE l.date = ?
+    ''',
+      [date],
+    );
+
+    final row = result.isNotEmpty ? result.first : <String, Object?>{};
+
+    double _toDouble(String key) {
+      final value = row[key];
+      if (value is num) {
+        return value.toDouble();
+      }
+      return 0;
+    }
+
+    return {
+      'calories': _toDouble('totalCalories'),
+      'fat': _toDouble('totalFat'),
+      'carbs': _toDouble('totalCarbs'),
+      'protein': _toDouble('totalProtein'),
+    };
+  }
+
   /// Schedule daily AI analysis at 10 PM
   static Future<void> scheduleDailyAnalysis() async {
     try {
@@ -71,7 +187,7 @@ class SchedulerService {
 
       // Cancel existing daily notifications with error handling
       try {
-        await _notifications.cancel(1000);
+        await _notifications.cancel(_dailyAnalysisNotificationId);
       } catch (e) {
         print('Warning: Could not cancel existing notification: $e');
       }
@@ -79,8 +195,10 @@ class SchedulerService {
       // Check if user has API key and complete profile
       final hasApiKey = await SettingsService.hasGeminiApiKey();
       final hasCompleteProfile = await SettingsService.hasCompleteProfile();
+      final weeklyOptIn =
+          await SettingsService.getWeeklyAnalysisNotificationsEnabled();
 
-      if (!hasApiKey || !hasCompleteProfile) {
+      if (!hasApiKey || !hasCompleteProfile || !weeklyOptIn) {
         return; // Don't schedule if requirements not met
       }
 
@@ -99,26 +217,28 @@ class SchedulerService {
         scheduledDate = scheduledDate.add(const Duration(days: 1));
       }
 
+      final notificationDetails = NotificationDetails(
+        android: const AndroidNotificationDetails(
+          'daily_analysis',
+          'Daily Nutrition Analysis',
+          channelDescription: 'Daily AI nutrition analysis notifications',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@drawable/ic_notification_calorium',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        ),
+        iOS: const DarwinNotificationDetails(
+          categoryIdentifier: 'daily_analysis',
+        ),
+      );
+
       try {
         await _notifications.zonedSchedule(
-          1000, // Unique ID for daily analysis
+          _dailyAnalysisNotificationId,
           'Daily Nutrition Analysis Ready',
           'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
           tz.TZDateTime.from(scheduledDate, tz.local),
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'daily_analysis',
-              'Daily Nutrition Analysis',
-              channelDescription: 'Daily AI nutrition analysis notifications',
-              importance: Importance.high,
-              priority: Priority.high,
-              icon: 'ic_stat_calorium',
-              largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-            ),
-            iOS: DarwinNotificationDetails(
-              categoryIdentifier: 'daily_analysis',
-            ),
-          ),
+          notificationDetails,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
@@ -137,24 +257,11 @@ class SchedulerService {
 
         try {
           await _notifications.zonedSchedule(
-            1000, // Unique ID for daily analysis
+            _dailyAnalysisNotificationId,
             'Daily Nutrition Analysis Ready',
             'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
             tz.TZDateTime.from(scheduledDate, tz.local),
-            const NotificationDetails(
-              android: AndroidNotificationDetails(
-                'daily_analysis',
-                'Daily Nutrition Analysis',
-                channelDescription: 'Daily AI nutrition analysis notifications',
-                importance: Importance.high,
-                priority: Priority.high,
-                icon: 'ic_stat_calorium',
-                largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-              ),
-              iOS: DarwinNotificationDetails(
-                categoryIdentifier: 'daily_analysis',
-              ),
-            ),
+            notificationDetails,
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             uiLocalNotificationDateInterpretation:
                 UILocalNotificationDateInterpretation.absoluteTime,
@@ -175,14 +282,14 @@ class SchedulerService {
     }
   }
 
-  /// Schedule weekly analysis notification (Sundays at 8 PM)
+  /// Schedule weekly analysis notification for Sundays at the configured time
   static Future<void> scheduleWeeklyAnalysis() async {
     try {
       if (!_isInitialized) await initialize();
 
       // Cancel existing weekly notifications with error handling
       try {
-        await _notifications.cancel(2000);
+        await _notifications.cancel(_weeklyAnalysisNotificationId);
       } catch (e) {
         print('Warning: Could not cancel existing weekly notification: $e');
       }
@@ -191,38 +298,47 @@ class SchedulerService {
       final hasApiKey = await SettingsService.hasGeminiApiKey();
       final hasCompleteProfile = await SettingsService.hasCompleteProfile();
 
-      if (!hasApiKey || !hasCompleteProfile) {
+      final weeklyOptIn =
+          await SettingsService.getWeeklyAnalysisNotificationsEnabled();
+
+      if (!hasApiKey || !hasCompleteProfile || !weeklyOptIn) {
         return; // Don't schedule if requirements not met
       }
 
       // Schedule for next Sunday at 8 PM
       final now = DateTime.now();
       var nextSunday = now.add(Duration(days: 7 - now.weekday));
+      final weeklyMinutes =
+          await SettingsService.getWeeklyAnalysisNotificationTimeMinutes();
       nextSunday = DateTime(
         nextSunday.year,
         nextSunday.month,
         nextSunday.day,
-        20,
-        0,
-      ); // 8 PM Sunday
+        weeklyMinutes ~/ 60,
+        weeklyMinutes % 60,
+      );
+
+      if (nextSunday.isBefore(now)) {
+        nextSunday = nextSunday.add(const Duration(days: 7));
+      }
 
       try {
         await _notifications.zonedSchedule(
-          2000, // Unique ID for weekly analysis
+          _weeklyAnalysisNotificationId,
           'Weekly Nutrition Summary Ready',
           'Your weekly nutrition report is ready! See how you\'ve been doing.',
           tz.TZDateTime.from(nextSunday, tz.local),
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
+          NotificationDetails(
+            android: const AndroidNotificationDetails(
               'weekly_analysis',
               'Weekly Nutrition Summary',
               channelDescription: 'Weekly nutrition summary notifications',
               importance: Importance.high,
               priority: Priority.high,
-              icon: 'ic_stat_calorium',
+              icon: '@drawable/ic_notification_calorium',
               largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
             ),
-            iOS: DarwinNotificationDetails(
+            iOS: const DarwinNotificationDetails(
               categoryIdentifier: 'weekly_analysis',
             ),
           ),
@@ -242,21 +358,21 @@ class SchedulerService {
 
         try {
           await _notifications.zonedSchedule(
-            2000, // Unique ID for weekly analysis
+            _weeklyAnalysisNotificationId,
             'Weekly Nutrition Summary Ready',
             'Your weekly nutrition report is ready! See how you\'ve been doing.',
             tz.TZDateTime.from(nextSunday, tz.local),
-            const NotificationDetails(
-              android: AndroidNotificationDetails(
+            NotificationDetails(
+              android: const AndroidNotificationDetails(
                 'weekly_analysis',
                 'Weekly Nutrition Summary',
                 channelDescription: 'Weekly nutrition summary notifications',
                 importance: Importance.high,
                 priority: Priority.high,
-                icon: 'ic_stat_calorium',
+                icon: '@drawable/ic_notification_calorium',
                 largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
               ),
-              iOS: DarwinNotificationDetails(
+              iOS: const DarwinNotificationDetails(
                 categoryIdentifier: 'weekly_analysis',
               ),
             ),
@@ -277,6 +393,161 @@ class SchedulerService {
     } catch (e) {
       print('Error in scheduleWeeklyAnalysis: $e');
       // Don't rethrow - notifications are not critical
+    }
+  }
+
+  static Future<_DailySummaryNotificationData> _buildDailySummaryData(
+    tz.TZDateTime scheduledTime,
+  ) async {
+    final summaryDate = DateTime(
+      scheduledTime.year,
+      scheduledTime.month,
+      scheduledTime.day,
+    );
+    final dateString = DateFormat('yyyy-MM-dd').format(summaryDate);
+
+    final totals = await _loadDailyTotals(dateString);
+    final calories = totals['calories'] ?? 0.0;
+    final protein = totals['protein'] ?? 0.0;
+    final carbs = totals['carbs'] ?? 0.0;
+    final fat = totals['fat'] ?? 0.0;
+
+    final macroTargets = await SettingsService.getMacroTargets();
+    final calorieTarget = await SettingsService.getCalorieTarget();
+    final proteinTarget = macroTargets?['protein'];
+    final carbsTarget = macroTargets?['carbs'];
+    final fatTarget = macroTargets?['fat'];
+
+    final bigText = [
+      _formatMacroProgress('Calories', calories, calorieTarget),
+      _formatMacroProgress('Protein', protein, proteinTarget),
+      _formatMacroProgress('Carbs', carbs, carbsTarget),
+      _formatMacroProgress('Fat', fat, fatTarget),
+    ].join('\n');
+
+    final compactSummary = [
+      _percentLabel('Calories', calories, calorieTarget),
+      _percentLabel('Protein', protein, proteinTarget),
+      _percentLabel('Carbs', carbs, carbsTarget),
+      _percentLabel('Fat', fat, fatTarget),
+    ].join(' • ');
+
+    return _DailySummaryNotificationData(
+      scheduledTime: scheduledTime,
+      summaryDateString: dateString,
+      compactSummary: compactSummary,
+      bigText: bigText,
+    );
+  }
+
+  static NotificationDetails _dailySummaryNotificationDetails(
+    _DailySummaryNotificationData data,
+  ) {
+    final subtitle = _formatTime(data.scheduledTime);
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_summary',
+        'Daily Summary',
+        channelDescription:
+            'Daily summaries of your calories and macros compared to targets',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@drawable/ic_notification_calorium',
+        styleInformation: BigTextStyleInformation(
+          data.bigText,
+          summaryText: subtitle,
+        ),
+      ),
+      iOS: DarwinNotificationDetails(
+        categoryIdentifier: 'daily_summary',
+        subtitle: subtitle,
+      ),
+    );
+  }
+
+  static void _handleNotificationResponse(NotificationResponse response) {
+    if (response.notificationResponseType !=
+            NotificationResponseType.selectedNotification &&
+        response.notificationResponseType !=
+            NotificationResponseType.selectedNotificationAction) {
+      return;
+    }
+
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) {
+      return;
+    }
+
+    final navigator = _navigatorKey?.currentState;
+    if (navigator == null) {
+      return;
+    }
+
+    if (payload.startsWith(_payloadDailyAnalysisPrefix)) {
+      final dateString = payload.substring(_payloadDailyAnalysisPrefix.length);
+      Future.microtask(() {
+        navigator.push(
+          MaterialPageRoute(
+            builder: (context) => DailyLogScreen(date: dateString),
+            settings: const RouteSettings(
+              name: 'DailyLogScreenFromNotification',
+            ),
+          ),
+        );
+      });
+    } else if (payload.startsWith(_payloadWeeklyAnalysisPrefix)) {
+      final weekStart = payload.substring(_payloadWeeklyAnalysisPrefix.length);
+      Future.microtask(() {
+        navigator.push(
+          MaterialPageRoute(
+            builder:
+                (context) => WeeklyAnalysisScreen(weekStartDate: weekStart),
+            settings: const RouteSettings(
+              name: 'WeeklyAnalysisScreenFromNotification',
+            ),
+          ),
+        );
+      });
+    }
+  }
+
+  /// Schedule the end-of-day nutrition summary notification
+  static Future<void> scheduleDailySummaryNotification() async {
+    try {
+      if (!_isInitialized) await initialize();
+
+      await _notifications.cancel(_dailySummaryNotificationId);
+
+      final enabled =
+          await SettingsService.getDailySummaryNotificationsEnabled();
+      if (!enabled) {
+        return;
+      }
+
+      final tzNow = tz.TZDateTime.now(tz.local);
+      final targetMinutes =
+          await SettingsService.getDailySummaryNotificationTimeMinutes();
+      final scheduledTime = _nextInstanceOfMinutes(targetMinutes, tzNow);
+
+      final data = await _buildDailySummaryData(scheduledTime);
+
+      await _notifications.zonedSchedule(
+        _dailySummaryNotificationId,
+        'Daily nutrition summary',
+        data.compactSummary,
+        scheduledTime,
+        _dailySummaryNotificationDetails(data),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      print(
+        'Daily summary scheduled for ${scheduledTime.toString()} with totals for ${data.summaryDateString}',
+      );
+    } catch (e) {
+      print('Error scheduling daily summary notification: $e');
     }
   }
 
@@ -312,7 +583,7 @@ class SchedulerService {
         print('Daily analysis completed successfully');
 
         // Send completion notification
-        await _sendAnalysisCompletedNotification();
+        await _sendAnalysisCompletedNotification(dateString);
       } else {
         print('Daily analysis failed - no data for today');
       }
@@ -322,26 +593,29 @@ class SchedulerService {
   }
 
   /// Send notification when analysis is completed
-  static Future<void> _sendAnalysisCompletedNotification() async {
+  static Future<void> _sendAnalysisCompletedNotification(
+    String dateString,
+  ) async {
     if (!_isInitialized) await initialize();
 
     await _notifications.show(
-      3000, // Unique ID for completion notification
+      _analysisCompletedNotificationId,
       'Nutrition Insights Ready! 🎯',
       'Your personalized AI suggestions and motivation are waiting for you.',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
+      NotificationDetails(
+        android: const AndroidNotificationDetails(
           'analysis_completed',
           'Analysis Completed',
           channelDescription: 'Notifications when AI analysis is completed',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
+          icon: '@drawable/ic_notification_calorium',
         ),
         iOS: DarwinNotificationDetails(
           categoryIdentifier: 'analysis_completed',
         ),
       ),
+      payload: '$_payloadDailyAnalysisPrefix$dateString',
     );
   }
 
@@ -363,7 +637,7 @@ class SchedulerService {
         print('Weekly analysis completed successfully');
 
         // Send completion notification
-        await _sendWeeklyAnalysisCompletedNotification();
+        await _sendWeeklyAnalysisCompletedNotification(weekStartString);
       } else {
         print('Weekly analysis failed');
       }
@@ -373,25 +647,27 @@ class SchedulerService {
   }
 
   /// Send notification when weekly analysis is completed
-  static Future<void> _sendWeeklyAnalysisCompletedNotification() async {
+  static Future<void> _sendWeeklyAnalysisCompletedNotification(
+    String weekStart,
+  ) async {
     if (!_isInitialized) await initialize();
 
     await _notifications.show(
-      4000, // Unique ID for weekly completion notification
+      _weeklyCompletedNotificationId,
       'Weekly Report Ready! 📊',
       'Your comprehensive nutrition summary and insights for this week are ready.',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
+      NotificationDetails(
+        android: const AndroidNotificationDetails(
           'weekly_completed',
           'Weekly Report Completed',
           channelDescription: 'Notifications when weekly analysis is completed',
           importance: Importance.high,
           priority: Priority.high,
-          icon: 'ic_stat_calorium',
-          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          icon: '@drawable/ic_notification_calorium',
         ),
         iOS: DarwinNotificationDetails(categoryIdentifier: 'weekly_completed'),
       ),
+      payload: '$_payloadWeeklyAnalysisPrefix$weekStart',
     );
   }
 
@@ -404,10 +680,14 @@ class SchedulerService {
       if (hasApiKey && hasCompleteProfile) {
         await scheduleDailyAnalysis();
         await scheduleWeeklyAnalysis();
-        print('Notifications scheduled successfully');
       } else {
-        print('Skipping notification setup - requirements not met');
+        print('Skipping AI notification setup - requirements not met');
       }
+
+      await scheduleDailySummaryNotification();
+      await updateFastingWindowNotifications();
+
+      print('Notifications scheduled successfully');
     } catch (e) {
       print('Error in setupScheduledNotifications: $e');
       // Don't rethrow - let the app continue without notifications
@@ -426,6 +706,136 @@ class SchedulerService {
     }
   }
 
+  /// Schedule intermittent fasting start/end notifications and the persistent banner
+  static Future<void> updateFastingWindowNotifications() async {
+    try {
+      if (!_isInitialized) await initialize();
+
+      await _notifications.cancel(_fastingStartNotificationId);
+      await _notifications.cancel(_fastingEndNotificationId);
+      await _notifications.cancel(_persistentEatingWindowNotificationId);
+
+      final notificationsEnabled =
+          await SettingsService.getFastingNotificationsEnabled();
+      if (!notificationsEnabled) {
+        return;
+      }
+
+      final settings = await FastingService.getSettings();
+      if (!settings.enabled) {
+        return;
+      }
+
+      final tzNow = tz.TZDateTime.now(tz.local);
+      final startMinutes = settings.eatingStartMinutes;
+      final endMinutes =
+          (settings.eatingStartMinutes + settings.eatingDurationMinutes) %
+          FastingSettings.minutesPerDay;
+
+      final startTime = _nextInstanceOfMinutes(startMinutes, tzNow);
+      var endTime = _nextInstanceOfMinutes(endMinutes, startTime);
+      if (!endTime.isAfter(startTime)) {
+        endTime = endTime.add(const Duration(days: 1));
+      }
+      final nextStartTime = _nextInstanceOfMinutes(startMinutes, endTime);
+      final eatingDuration = Duration(minutes: settings.eatingDurationMinutes);
+
+      final startBody =
+          'Your eating window is open until ${_formatTime(endTime)}.';
+      await _notifications.zonedSchedule(
+        _fastingStartNotificationId,
+        'Eating window started',
+        startBody,
+        startTime,
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
+            'fasting_window_start',
+            'Fasting Window Alerts',
+            channelDescription:
+                'Reminders when your intermittent fasting eating window starts and ends',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@drawable/ic_notification_calorium',
+          ),
+          iOS: const DarwinNotificationDetails(
+            categoryIdentifier: 'fasting_window_start',
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      await _notifications.zonedSchedule(
+        _persistentEatingWindowNotificationId,
+        'Eating window in progress',
+        'Ends at ${_formatTime(endTime)}',
+        startTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'fasting_eating_window',
+            'Eating Window Status',
+            channelDescription: 'Updates while your eating window is active',
+            importance: Importance.low,
+            priority: Priority.low,
+            icon: '@drawable/ic_notification_calorium',
+            ongoing: true,
+            playSound: false,
+            usesChronometer: true,
+            chronometerCountDown: true,
+            when: endTime.millisecondsSinceEpoch,
+            showWhen: false,
+            timeoutAfter: eatingDuration.inMilliseconds,
+          ),
+          iOS: DarwinNotificationDetails(
+            categoryIdentifier: 'fasting_eating_window',
+            interruptionLevel: InterruptionLevel.passive,
+            presentSound: false,
+            subtitle: 'Ends at ${_formatTime(endTime)}',
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      final endBody =
+          'Eating window closed. Next window opens at ${_formatTime(nextStartTime)}.';
+      await _notifications.zonedSchedule(
+        _fastingEndNotificationId,
+        'Eating window finished',
+        endBody,
+        endTime,
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
+            'fasting_window_end',
+            'Fasting Window Alerts',
+            channelDescription:
+                'Reminders when your intermittent fasting eating window starts and ends',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@drawable/ic_notification_calorium',
+          ),
+          iOS: const DarwinNotificationDetails(
+            categoryIdentifier: 'fasting_window_end',
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+
+      print(
+        'Fasting notifications scheduled: start ${startTime.toString()}, end ${endTime.toString()}',
+      );
+    } catch (e) {
+      print('Error scheduling fasting notifications: $e');
+    }
+  }
+
   /// Show/update a persistent notification while the eating window is active
   static Future<void> showEatingWindowNotification({
     required Duration timeRemaining,
@@ -433,7 +843,7 @@ class SchedulerService {
   }) async {
     if (!_isInitialized) await initialize();
 
-    const notificationId = 5010;
+    const notificationId = _persistentEatingWindowNotificationId;
 
     if (!isActive) {
       await _notifications.cancel(notificationId);
@@ -459,8 +869,7 @@ class SchedulerService {
             priority: Priority.low,
             ongoing: true,
             playSound: false,
-            icon: 'ic_stat_calorium',
-            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+            icon: '@drawable/ic_notification_calorium',
           ),
           iOS: DarwinNotificationDetails(
             presentSound: false,
@@ -480,7 +889,7 @@ class SchedulerService {
     await _notifications.show(
       9999,
       'Test Notification',
-      'This is a test notification from Calorie Tracker',
+      'This is a test notification from Calorium.',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'test',
@@ -488,7 +897,7 @@ class SchedulerService {
           channelDescription: 'Test notifications for debugging',
           importance: Importance.high,
           priority: Priority.high,
-          icon: 'ic_stat_calorium',
+          icon: '@drawable/ic_notification_calorium',
           largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         ),
         iOS: DarwinNotificationDetails(categoryIdentifier: 'test'),
@@ -500,62 +909,41 @@ class SchedulerService {
   // DEBUG METHODS FOR MANUAL TESTING
   // ========================================
 
-  /// Manual trigger for daily analysis notification (DEBUG ONLY)
+  /// Manually run the daily analysis so the real notification pathway is exercised (DEBUG ONLY)
   static Future<void> debugTriggerDailyNotification() async {
-    if (!_isInitialized) await initialize();
-
-    print('🐛 DEBUG: Manually triggering daily analysis notification...');
-
-    await _notifications.show(
-      1001, // Different ID from scheduled notification
-      'Daily Nutrition Analysis Ready (DEBUG)',
-      'Manual trigger: Your AI nutrition insights are ready! Tap to view personalized suggestions.',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'debug_daily_analysis',
-          'Debug Daily Analysis',
-          channelDescription: 'Debug daily AI nutrition analysis notifications',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: 'ic_stat_calorium',
-          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        ),
-        iOS: DarwinNotificationDetails(
-          categoryIdentifier: 'debug_daily_analysis',
-        ),
-      ),
-    );
-
-    print('✅ DEBUG: Daily notification sent');
+    print('🐛 DEBUG: Running daily analysis to trigger notification...');
+    await debugPerformDailyAnalysis(force: true);
   }
 
-  /// Manual trigger for weekly analysis notification (DEBUG ONLY)
+  /// Manually run the weekly analysis so the real notification pathway is exercised (DEBUG ONLY)
   static Future<void> debugTriggerWeeklyNotification() async {
+    print('🐛 DEBUG: Running weekly analysis to trigger notification...');
+    await debugPerformWeeklyAnalysis();
+  }
+
+  /// Generate the daily summary notification immediately using live data (DEBUG ONLY)
+  static Future<void> debugTriggerDailySummaryNotification() async {
     if (!_isInitialized) await initialize();
 
-    print('🐛 DEBUG: Manually triggering weekly analysis notification...');
-
+    print('🐛 DEBUG: Showing daily summary notification...');
+    final scheduled = tz.TZDateTime.now(tz.local);
+    final data = await _buildDailySummaryData(scheduled);
     await _notifications.show(
-      2001, // Different ID from scheduled notification
-      'Weekly Nutrition Summary Ready (DEBUG)',
-      'Manual trigger: Your weekly nutrition report is ready! See how you\'ve been doing.',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'debug_weekly_analysis',
-          'Debug Weekly Analysis',
-          channelDescription: 'Debug weekly nutrition summary notifications',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: 'ic_stat_calorium',
-          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        ),
-        iOS: DarwinNotificationDetails(
-          categoryIdentifier: 'debug_weekly_analysis',
-        ),
-      ),
+      _dailySummaryNotificationId,
+      'Daily nutrition summary',
+      data.compactSummary,
+      _dailySummaryNotificationDetails(data),
     );
+    print('✅ DEBUG: Daily summary notification displayed');
+  }
 
-    print('✅ DEBUG: Weekly notification sent');
+  /// Refresh fasting notifications with the latest settings (DEBUG ONLY)
+  static Future<void> debugTriggerFastingNotifications() async {
+    print(
+      '🐛 DEBUG: Scheduling fasting notifications with current settings...',
+    );
+    await updateFastingWindowNotifications();
+    print('✅ DEBUG: Fasting notifications refreshed');
   }
 
   /// Manual trigger for daily AI analysis with force option (DEBUG ONLY)
@@ -604,7 +992,7 @@ class SchedulerService {
         );
 
         // Send completion notification
-        await _sendAnalysisCompletedNotification();
+        await _sendAnalysisCompletedNotification(dateString);
         print('📱 DEBUG: Analysis completion notification sent');
       } else {
         print('❌ DEBUG: Daily analysis failed - no data for today');
@@ -652,7 +1040,7 @@ class SchedulerService {
         );
 
         // Send completion notification
-        await _sendWeeklyAnalysisCompletedNotification();
+        await _sendWeeklyAnalysisCompletedNotification(weekStartString);
         print('📱 DEBUG: Weekly analysis completion notification sent');
       } else {
         print('❌ DEBUG: Weekly analysis failed');
@@ -706,9 +1094,12 @@ class SchedulerService {
     // Test 2: Send test notifications
     print('\n2️⃣  Testing notifications...');
     await debugTriggerDailyNotification();
-    await Future.delayed(Duration(seconds: 1));
+    await Future.delayed(const Duration(seconds: 1));
     await debugTriggerWeeklyNotification();
-    await Future.delayed(Duration(seconds: 1));
+    await Future.delayed(const Duration(seconds: 1));
+    await debugTriggerDailySummaryNotification();
+    await Future.delayed(const Duration(seconds: 1));
+    await debugTriggerFastingNotifications();
     await showTestNotification();
 
     // Test 3: Perform analysis if possible
@@ -729,4 +1120,18 @@ class SchedulerService {
     print('🎉 DEBUG: Test suite completed!');
     print('=' * 60 + '\n');
   }
+}
+
+class _DailySummaryNotificationData {
+  const _DailySummaryNotificationData({
+    required this.scheduledTime,
+    required this.summaryDateString,
+    required this.compactSummary,
+    required this.bigText,
+  });
+
+  final tz.TZDateTime scheduledTime;
+  final String summaryDateString;
+  final String compactSummary;
+  final String bigText;
 }

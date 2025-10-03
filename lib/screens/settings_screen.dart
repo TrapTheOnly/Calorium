@@ -11,14 +11,28 @@ import '../models/fasting_settings.dart';
 import '../widgets/custom_alert.dart';
 import '../widgets/fasting_overview_card.dart';
 
+enum _SettingsSection {
+  theme,
+  profile,
+  fasting,
+  notifications,
+  nutritionTargets,
+  aiConfiguration,
+  debug,
+}
+
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.openFastingSection = false});
+
+  final bool openFastingSection;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _fastingSectionKey = GlobalKey();
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _calorieTargetController =
       TextEditingController();
@@ -54,6 +68,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _originalEatingStart = const TimeOfDay(hour: 12, minute: 0);
   double _originalEatingDurationHours = 8;
 
+  // Notification settings
+  bool _fastingNotificationsEnabled = false;
+  bool _dailySummaryNotificationsEnabled = true;
+  bool _weeklyAnalysisNotificationsEnabled = false;
+  TimeOfDay _dailySummaryTime = const TimeOfDay(hour: 22, minute: 0);
+  TimeOfDay _weeklyAnalysisTime = const TimeOfDay(hour: 18, minute: 0);
+
+  bool _originalFastingNotificationsEnabled = false;
+  bool _originalDailySummaryNotificationsEnabled = true;
+  bool _originalWeeklyAnalysisNotificationsEnabled = false;
+  TimeOfDay _originalDailySummaryTime = const TimeOfDay(hour: 22, minute: 0);
+  TimeOfDay _originalWeeklyAnalysisTime = const TimeOfDay(hour: 18, minute: 0);
+
   // Debug preview controls
   double _debugStreakPreview = 0;
   double _debugHoursPreview = 4;
@@ -61,6 +88,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Change tracking
   bool _hasUnsavedChanges = false;
+
+  static const Duration _sectionAnimationDuration = Duration(milliseconds: 260);
+  static const Curve _sectionSwitchInCurve = Curves.easeOutCubic;
+  static const Curve _sectionSwitchOutCurve = Curves.easeInCubic;
+
+  final Map<_SettingsSection, bool> _sectionExpanded = {
+    for (final section in _SettingsSection.values) section: false,
+  };
 
   // Original values for comparison
   String? _originalSex;
@@ -82,6 +117,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _setupChangeListeners();
       _checkForChanges(); // Check once after initialization
     });
+
+    // If requested, open and scroll to the fasting section after first frame
+    if (widget.openFastingSection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        setState(() {
+          _sectionExpanded[_SettingsSection.fasting] = true;
+        });
+        final ctx = _fastingSectionKey.currentContext;
+        if (ctx != null) {
+          await Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            alignment: 0.05,
+          );
+        }
+      });
+    }
   }
 
   void _setupChangeListeners() {
@@ -93,6 +147,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _carbsController.addListener(_checkForChanges);
     _fatController.addListener(_checkForChanges);
     _geminiModelController.addListener(_checkForChanges);
+  }
+
+  bool _isSectionExpanded(_SettingsSection section) =>
+      _sectionExpanded[section] ?? false;
+
+  void _toggleSection(_SettingsSection section) {
+    setState(() {
+      final current = _sectionExpanded[section] ?? false;
+      _sectionExpanded[section] = !current;
+    });
   }
 
   void _checkForChanges() {
@@ -112,7 +176,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _geminiModelController.text != _originalGeminiModel ||
         _fastingEnabled != _originalFastingEnabled ||
         !_isSameTimeOfDay(_eatingStart, _originalEatingStart) ||
-        (_eatingDurationHours - _originalEatingDurationHours).abs() > 0.01;
+        (_eatingDurationHours - _originalEatingDurationHours).abs() > 0.01 ||
+        _fastingNotificationsEnabled != _originalFastingNotificationsEnabled ||
+        _dailySummaryNotificationsEnabled !=
+            _originalDailySummaryNotificationsEnabled ||
+        _weeklyAnalysisNotificationsEnabled !=
+            _originalWeeklyAnalysisNotificationsEnabled ||
+        !_isSameTimeOfDay(_dailySummaryTime, _originalDailySummaryTime) ||
+        !_isSameTimeOfDay(_weeklyAnalysisTime, _originalWeeklyAnalysisTime);
 
     if (hasChanges != _hasUnsavedChanges) {
       setState(() {
@@ -137,6 +208,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final geminiModel = await SettingsService.getGeminiModel();
     final macroTargets = await SettingsService.getMacroTargets();
     final fastingSettings = await FastingService.getSettings();
+    final fastingNotificationsEnabled =
+        await SettingsService.getFastingNotificationsEnabled();
+    final dailySummaryNotificationsEnabled =
+        await SettingsService.getDailySummaryNotificationsEnabled();
+    final dailySummaryMinutes =
+        await SettingsService.getDailySummaryNotificationTimeMinutes();
+    final weeklyAnalysisNotificationsEnabled =
+        await SettingsService.getWeeklyAnalysisNotificationsEnabled();
+    final weeklyAnalysisMinutes =
+        await SettingsService.getWeeklyAnalysisNotificationTimeMinutes();
 
     if (mounted) {
       setState(() {
@@ -163,6 +244,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _maxEatingHours,
         );
 
+        _fastingNotificationsEnabled = fastingNotificationsEnabled;
+        _dailySummaryNotificationsEnabled = dailySummaryNotificationsEnabled;
+        _weeklyAnalysisNotificationsEnabled =
+            weeklyAnalysisNotificationsEnabled;
+        _dailySummaryTime = TimeOfDay(
+          hour: dailySummaryMinutes ~/ 60,
+          minute: dailySummaryMinutes % 60,
+        );
+        _weeklyAnalysisTime = TimeOfDay(
+          hour: weeklyAnalysisMinutes ~/ 60,
+          minute: weeklyAnalysisMinutes % 60,
+        );
+
         // Store original values
         _originalSex = sex;
         _originalActivityLevel = activityLevel;
@@ -181,6 +275,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _minEatingHours,
           _maxEatingHours,
         );
+        _originalFastingNotificationsEnabled = fastingNotificationsEnabled;
+        _originalDailySummaryNotificationsEnabled =
+            dailySummaryNotificationsEnabled;
+        _originalWeeklyAnalysisNotificationsEnabled =
+            weeklyAnalysisNotificationsEnabled;
+        _originalDailySummaryTime = _dailySummaryTime;
+        _originalWeeklyAnalysisTime = _weeklyAnalysisTime;
       });
     }
   }
@@ -235,7 +336,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await SettingsService.setMacroTargets(protein, carbs, fat);
       }
 
-      // Setup notifications with error handling
+      await SettingsService.setFastingNotificationsEnabled(
+        _fastingNotificationsEnabled,
+      );
+      await SettingsService.setDailySummaryNotificationsEnabled(
+        _dailySummaryNotificationsEnabled,
+      );
+      await SettingsService.setDailySummaryNotificationTimeMinutes(
+        _dailySummaryTime.hour * 60 + _dailySummaryTime.minute,
+      );
+      await SettingsService.setWeeklyAnalysisNotificationsEnabled(
+        _weeklyAnalysisNotificationsEnabled,
+      );
+      await SettingsService.setWeeklyAnalysisNotificationTimeMinutes(
+        _weeklyAnalysisTime.hour * 60 + _weeklyAnalysisTime.minute,
+      );
+
+      // Setup notifications with current settings (pre-save for non-fasting items)
       try {
         await SchedulerService.setupScheduledNotifications();
       } catch (e) {
@@ -263,6 +380,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+      // After saving fasting settings, reschedule fasting notifications
+      try {
+        await SchedulerService.updateFastingWindowNotifications();
+      } catch (e) {
+        print('Warning: Failed to update fasting notifications: $e');
+      }
+
       if (_fastingEnabled && !_originalFastingEnabled) {
         await FastingService.initializeStreak(DateTime.now());
       } else if (!_fastingEnabled && _originalFastingEnabled) {
@@ -272,6 +396,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _originalFastingEnabled = _fastingEnabled;
       _originalEatingStart = _eatingStart;
       _originalEatingDurationHours = _eatingDurationHours;
+      _originalFastingNotificationsEnabled = _fastingNotificationsEnabled;
+      _originalDailySummaryNotificationsEnabled =
+          _dailySummaryNotificationsEnabled;
+      _originalWeeklyAnalysisNotificationsEnabled =
+          _weeklyAnalysisNotificationsEnabled;
+      _originalDailySummaryTime = _dailySummaryTime;
+      _originalWeeklyAnalysisTime = _weeklyAnalysisTime;
 
       setState(() {
         _hasUnsavedChanges = false;
@@ -445,6 +576,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     // Remove change listeners
     _apiKeyController.removeListener(_checkForChanges);
     _ageController.removeListener(_checkForChanges);
@@ -571,6 +703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         body: SafeArea(
           child: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.symmetric(
               horizontal: 16.0,
               vertical: 24.0,
@@ -604,6 +737,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // Theme Settings Section
                     _buildModernSection(
+                      section: _SettingsSection.theme,
                       title: 'Theme',
                       icon: Icons.palette_outlined,
                       child: _buildThemeSelector(themeProvider),
@@ -612,6 +746,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // Profile Settings Section
                     _buildModernSection(
+                      section: _SettingsSection.profile,
                       title: 'Profile',
                       icon: Icons.person_outline,
                       child: _buildModernProfileSection(),
@@ -620,14 +755,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // Fasting Settings Section
                     _buildModernSection(
+                      sectionKey: _fastingSectionKey,
+                      section: _SettingsSection.fasting,
                       title: 'Intermittent Fasting',
                       icon: Icons.timelapse_outlined,
                       child: _buildFastingSection(),
                     ),
                     const SizedBox(height: 24),
 
+                    // Notification Settings Section
+                    _buildModernSection(
+                      section: _SettingsSection.notifications,
+                      title: 'Notifications',
+                      icon: Icons.notifications_active_outlined,
+                      child: _buildNotificationSection(),
+                    ),
+                    const SizedBox(height: 24),
+
                     // Nutrition Targets Section
                     _buildModernSection(
+                      section: _SettingsSection.nutritionTargets,
                       title: 'Nutrition Targets',
                       icon: Icons.track_changes_outlined,
                       child: _buildMacroTargetsSection(),
@@ -636,6 +783,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     // AI Settings Section
                     _buildModernSection(
+                      section: _SettingsSection.aiConfiguration,
                       title: 'AI Configuration',
                       icon: Icons.smart_toy_outlined,
                       child: _buildModernApiKeySection(),
@@ -645,6 +793,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (kDebugMode) ...[
                       const SizedBox(height: 24),
                       _buildModernSection(
+                        section: _SettingsSection.debug,
                         title: 'Debug Testing',
                         icon: Icons.bug_report_outlined,
                         child: _buildDebugTestingSection(),
@@ -663,17 +812,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildModernSection({
+    required _SettingsSection section,
     required String title,
     required IconData icon,
     required Widget child,
+    Key? sectionKey,
   }) {
+    final theme = Theme.of(context);
+    final expanded = _isSectionExpanded(section);
+
     return Container(
+      key: sectionKey,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
+            color: theme.colorScheme.shadow.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -684,33 +839,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _toggleSection(section),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: theme.colorScheme.primary,
+                      size: 24,
+                    ),
                   ),
-                  child: Icon(
-                    icon,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 24,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
+                  AnimatedRotation(
+                    turns: expanded ? 0.0 : -0.25,
+                    duration: _sectionAnimationDuration,
+                    curve: _sectionSwitchInCurve,
+                    child: Icon(
+                      Icons.expand_more,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            child,
+            AnimatedSwitcher(
+              duration: _sectionAnimationDuration,
+              switchInCurve: _sectionSwitchInCurve,
+              switchOutCurve: _sectionSwitchOutCurve,
+              transitionBuilder: (child, animation) {
+                return SizeTransition(
+                  sizeFactor: animation,
+                  axisAlignment: -1,
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: expanded
+                  ? Padding(
+                      key: ValueKey('${section.name}-expanded'),
+                      padding: const EdgeInsets.only(top: 20),
+                      child: child,
+                    )
+                  : SizedBox.shrink(
+                      key: ValueKey('${section.name}-collapsed'),
+                    ),
+            ),
           ],
         ),
       ),
@@ -1298,6 +1488,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (value) {
                 setState(() {
                   _fastingEnabled = value;
+                  _fastingNotificationsEnabled = value;
                 });
                 _checkForChanges();
               },
@@ -1491,6 +1682,243 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return (hours % 1).abs() < 0.01
         ? hours.toStringAsFixed(0)
         : hours.toStringAsFixed(1);
+  }
+
+  Widget _buildNotificationSection() {
+    final theme = Theme.of(context);
+    final timeFormatter = MaterialLocalizations.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildNotificationCard(
+          theme: theme,
+          icon: Icons.fastfood_outlined,
+          title: 'Fasting reminders',
+          description:
+              'Get alerts when your eating window opens, closes, and keep the status visible while it\'s active.',
+          value: _fastingNotificationsEnabled,
+          onChanged:
+              _fastingEnabled
+                  ? (value) {
+                    setState(() {
+                      _fastingNotificationsEnabled = value;
+                    });
+                    _checkForChanges();
+                  }
+                  : null,
+        ),
+        const SizedBox(height: 20),
+        _buildNotificationCard(
+          theme: theme,
+          icon: Icons.insights_outlined,
+          title: 'Daily summary',
+          description:
+              'Evening snapshot of calories and macros versus your targets.',
+          value: _dailySummaryNotificationsEnabled,
+          onChanged: (value) {
+            setState(() {
+              _dailySummaryNotificationsEnabled = value;
+            });
+            _checkForChanges();
+          },
+          trailing: _buildTimePickerChip(
+            theme: theme,
+            label: timeFormatter.formatTimeOfDay(_dailySummaryTime),
+            enabled: _dailySummaryNotificationsEnabled,
+            onTap:
+                () => _pickNotificationTime(
+                  initial: _dailySummaryTime,
+                  helpText: 'Choose when to send the daily summary',
+                  onSelected: (picked) {
+                    setState(() {
+                      _dailySummaryTime = picked;
+                    });
+                    _checkForChanges();
+                  },
+                ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildNotificationCard(
+          theme: theme,
+          icon: Icons.auto_graph_outlined,
+          title: 'Weekly AI analysis',
+          description:
+              'Run the Gemini-powered weekly review every Sunday once your API key and profile are set.',
+          value: _weeklyAnalysisNotificationsEnabled,
+          onChanged: (value) {
+            setState(() {
+              _weeklyAnalysisNotificationsEnabled = value;
+            });
+            _checkForChanges();
+          },
+          trailing: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTimePickerChip(
+                theme: theme,
+                label: timeFormatter.formatTimeOfDay(_weeklyAnalysisTime),
+                enabled: _weeklyAnalysisNotificationsEnabled,
+                onTap:
+                    () => _pickNotificationTime(
+                      initial: _weeklyAnalysisTime,
+                      helpText: 'Choose when to run the weekly analysis',
+                      onSelected: (picked) {
+                        setState(() {
+                          _weeklyAnalysisTime = picked;
+                        });
+                        _checkForChanges();
+                      },
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Happens on Sundays at your selected time.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotificationCard({
+    required ThemeData theme,
+    required IconData icon,
+    required String title,
+    required String description,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+    Widget? trailing,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withOpacity(0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: theme.colorScheme.primary, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: value,
+                onChanged: onChanged,
+                activeColor: theme.colorScheme.primary,
+              ),
+            ],
+          ),
+          if (trailing != null) ...[const SizedBox(height: 16), trailing],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimePickerChip({
+    required ThemeData theme,
+    required String label,
+    required bool enabled,
+    required VoidCallback? onTap,
+  }) {
+    final foreground =
+        enabled
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurfaceVariant;
+    final background =
+        enabled
+            ? theme.colorScheme.primary.withOpacity(0.12)
+            : theme.colorScheme.surfaceContainerHighest.withOpacity(0.4);
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color:
+                enabled
+                    ? theme.colorScheme.primary.withOpacity(0.5)
+                    : theme.colorScheme.outlineVariant.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.access_time, size: 18, color: foreground),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickNotificationTime({
+    required TimeOfDay initial,
+    required String helpText,
+    required ValueChanged<TimeOfDay> onSelected,
+  }) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      helpText: helpText,
+    );
+    if (picked != null) {
+      onSelected(picked);
+    }
   }
 
   Widget _buildMacroTargetsSection() {
@@ -1856,7 +2284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: const TextStyle(fontSize: 16),
                 decoration: InputDecoration(
                   labelText: 'Model identifier',
-                  hintText: 'gemini-1.5-flash-latest',
+                  hintText: 'gemini-2.0-flash',
                   hintStyle: TextStyle(
                     color: Theme.of(
                       context,
@@ -2424,13 +2852,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () async {
                   try {
                     await SchedulerService.debugTriggerDailyNotification();
-                    _showSnackBar('Daily notification sent!', Colors.green);
+                    _showSnackBar(
+                      'Daily analysis notification sent!',
+                      Colors.green,
+                    );
                   } catch (e) {
                     _showSnackBar('Error: $e', Colors.red);
                   }
                 },
                 icon: Icon(Icons.today, size: 18),
-                label: Text('Daily'),
+                label: Text('Daily Analysis'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
@@ -2444,15 +2875,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () async {
                   try {
                     await SchedulerService.debugTriggerWeeklyNotification();
-                    _showSnackBar('Weekly notification sent!', Colors.green);
+                    _showSnackBar(
+                      'Weekly analysis notification sent!',
+                      Colors.green,
+                    );
                   } catch (e) {
                     _showSnackBar('Error: $e', Colors.red);
                   }
                 },
                 icon: Icon(Icons.calendar_view_week, size: 18),
-                label: Text('Weekly'),
+                label: Text('Weekly Analysis'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.debugTriggerDailySummaryNotification();
+                    _showSnackBar(
+                      'Daily summary notification displayed!',
+                      Colors.green,
+                    );
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.insights, size: 18),
+                label: Text('Daily Summary'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.debugTriggerFastingNotifications();
+                    _showSnackBar(
+                      'Fasting notifications refreshed!',
+                      Colors.green,
+                    );
+                  } catch (e) {
+                    _showSnackBar('Error: $e', Colors.red);
+                  }
+                },
+                icon: Icon(Icons.fastfood_outlined, size: 18),
+                label: Text('Fasting Schedule'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -2732,14 +3218,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showSnackBar(String message, Color color) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          duration: Duration(seconds: 3),
-        ),
-      );
+    if (!mounted) return;
+
+    if (color == Colors.green) {
+      AlertHelper.showSuccessAlert(context, title: 'Success', message: message);
+    } else if (color == Colors.red) {
+      AlertHelper.showErrorAlert(context, title: 'Error', message: message);
+    } else {
+      AlertHelper.showInfoAlert(context, title: 'Notice', message: message);
     }
   }
 

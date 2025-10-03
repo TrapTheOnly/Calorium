@@ -20,15 +20,18 @@ class InventoryScreen extends StatefulWidget {
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProviderStateMixin {
+class _InventoryScreenState extends State<InventoryScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FoodService _foodService = FoodService();
-  
+
   // Search controllers
   final TextEditingController _simpleSearchController = TextEditingController();
-  final TextEditingController _compoundSearchController = TextEditingController();
-  final TextEditingController _recipesSearchController = TextEditingController();
-  
+  final TextEditingController _compoundSearchController =
+      TextEditingController();
+  final TextEditingController _recipesSearchController =
+      TextEditingController();
+
   // Data for each tab
   List<Food> _allSimpleFoods = [];
   List<Food> _filteredSimpleFoods = [];
@@ -36,40 +39,40 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   List<Food> _filteredCompoundFoods = [];
   List<CustomRecipe> _allCustomRecipes = [];
   List<CustomRecipe> _filteredCustomRecipes = [];
-  
+
   // Tag management for simple foods
   List<String> _availableTags = [];
   final List<String> _selectedTags = [];
-  
+
   // Tag management for AI recipes
   List<String> _availableRecipeTags = [];
   final List<String> _selectedRecipeTags = [];
-  
+
   // Track loading state
   bool _isLoadingSimple = false;
   bool _isLoadingCompound = false;
   bool _isLoadingRecipes = false;
   bool _isLoadingTags = false;
   bool _isLoadingRecipeTags = false;
-  
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
+
     // Listen for tab changes
     _tabController.addListener(_handleTabChange);
-    
+
     // Add search listeners
     _simpleSearchController.addListener(_onSimpleSearchChanged);
     _compoundSearchController.addListener(_onCompoundSearchChanged);
     _recipesSearchController.addListener(_onRecipesSearchChanged);
-    
+
     // Load initial data for first tab
     _loadSimpleFoods();
     _loadAvailableTags();
   }
-  
+
   void _handleTabChange() {
     if (!_tabController.indexIsChanging) {
       switch (_tabController.index) {
@@ -93,29 +96,29 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       }
     }
   }
-  
+
   void _onSimpleSearchChanged() {
     _filterSimpleFoods();
   }
-  
+
   void _onCompoundSearchChanged() {
     _filterCompoundFoods();
   }
-  
+
   void _onRecipesSearchChanged() {
     _filterCustomRecipes();
   }
-  
+
   Future<void> _loadSimpleFoods() async {
     if (_isLoadingSimple) return;
-    
+
     setState(() {
       _isLoadingSimple = true;
     });
-    
+
     try {
       final foods = await _foodService.getSimpleFoods();
-      
+
       if (mounted) {
         setState(() {
           _allSimpleFoods = foods;
@@ -128,24 +131,26 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         setState(() {
           _isLoadingSimple = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading simple foods: ${e.toString()}')),
+
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Load Failed',
+          message: 'Error loading simple foods: ${e.toString()}',
         );
       }
     }
   }
-  
+
   Future<void> _loadCompoundFoods() async {
     if (_isLoadingCompound) return;
-    
+
     setState(() {
       _isLoadingCompound = true;
     });
-    
+
     try {
       final foods = await _foodService.getCompoundFoods();
-      
+
       if (mounted) {
         setState(() {
           _allCompoundFoods = foods;
@@ -158,9 +163,11 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         setState(() {
           _isLoadingCompound = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading compound foods: ${e.toString()}')),
+
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Load Failed',
+          message: 'Error loading compound foods: ${e.toString()}',
         );
       }
     }
@@ -168,14 +175,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
 
   Future<void> _loadCustomRecipes() async {
     if (_isLoadingRecipes) return;
-    
+
     setState(() {
       _isLoadingRecipes = true;
     });
-    
+
     try {
       final recipes = await CustomRecipeService.getAllCustomRecipes();
-      
+
       if (mounted) {
         setState(() {
           _allCustomRecipes = recipes;
@@ -188,24 +195,26 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         setState(() {
           _isLoadingRecipes = false;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading custom recipes: ${e.toString()}')),
+
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Load Failed',
+          message: 'Error loading custom recipes: ${e.toString()}',
         );
       }
     }
   }
-  
+
   Future<void> _loadAvailableTags() async {
     if (_isLoadingTags) return;
-    
+
     setState(() {
       _isLoadingTags = true;
     });
-    
+
     try {
       final tags = await _foodService.getAllSimpleFoodTags();
-      
+
       if (mounted) {
         setState(() {
           _availableTags = tags;
@@ -220,17 +229,17 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       }
     }
   }
-  
+
   Future<void> _loadAvailableRecipeTags() async {
     if (_isLoadingRecipeTags) return;
-    
+
     setState(() {
       _isLoadingRecipeTags = true;
     });
-    
+
     try {
       final tags = await CustomRecipeService.getAllCustomRecipeTags();
-      
+
       if (mounted) {
         setState(() {
           _availableRecipeTags = tags;
@@ -245,44 +254,53 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       }
     }
   }
-  
+
   void _filterSimpleFoods() {
     final query = _simpleSearchController.text.toLowerCase();
-    
+
     setState(() {
-      _filteredSimpleFoods = _allSimpleFoods.where((food) {
-        final matchesSearch = query.isEmpty || food.name.toLowerCase().contains(query);
-        final matchesTags = _selectedTags.isEmpty || _selectedTags.every((tag) => food.tags.contains(tag));
-        return matchesSearch && matchesTags;
-      }).toList();
+      _filteredSimpleFoods =
+          _allSimpleFoods.where((food) {
+            final matchesSearch =
+                query.isEmpty || food.name.toLowerCase().contains(query);
+            final matchesTags =
+                _selectedTags.isEmpty ||
+                _selectedTags.every((tag) => food.tags.contains(tag));
+            return matchesSearch && matchesTags;
+          }).toList();
     });
   }
-  
+
   void _filterCompoundFoods() {
     final query = _compoundSearchController.text.toLowerCase();
-    
+
     setState(() {
-      _filteredCompoundFoods = _allCompoundFoods.where((food) {
-        return query.isEmpty || food.name.toLowerCase().contains(query);
-      }).toList();
+      _filteredCompoundFoods =
+          _allCompoundFoods.where((food) {
+            return query.isEmpty || food.name.toLowerCase().contains(query);
+          }).toList();
     });
   }
-  
+
   void _filterCustomRecipes() {
     final query = _recipesSearchController.text.toLowerCase();
-    
+
     setState(() {
-      _filteredCustomRecipes = _allCustomRecipes.where((recipe) {
-        final matchesSearch = query.isEmpty || 
-               recipe.name.toLowerCase().contains(query) ||
-               recipe.description.toLowerCase().contains(query) ||
-               recipe.ingredients.join(' ').toLowerCase().contains(query);
-        final matchesTags = _selectedRecipeTags.isEmpty || _selectedRecipeTags.every((tag) => recipe.tags.contains(tag));
-        return matchesSearch && matchesTags;
-      }).toList();
+      _filteredCustomRecipes =
+          _allCustomRecipes.where((recipe) {
+            final matchesSearch =
+                query.isEmpty ||
+                recipe.name.toLowerCase().contains(query) ||
+                recipe.description.toLowerCase().contains(query) ||
+                recipe.ingredients.join(' ').toLowerCase().contains(query);
+            final matchesTags =
+                _selectedRecipeTags.isEmpty ||
+                _selectedRecipeTags.every((tag) => recipe.tags.contains(tag));
+            return matchesSearch && matchesTags;
+          }).toList();
     });
   }
-  
+
   void _toggleTag(String tag) {
     setState(() {
       if (_selectedTags.contains(tag)) {
@@ -293,14 +311,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     });
     _filterSimpleFoods();
   }
-  
+
   void _clearAllTags() {
     setState(() {
       _selectedTags.clear();
     });
     _filterSimpleFoods();
   }
-  
+
   void _toggleRecipeTag(String tag) {
     setState(() {
       if (_selectedRecipeTags.contains(tag)) {
@@ -311,21 +329,24 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     });
     _filterCustomRecipes();
   }
-  
+
   void _clearAllRecipeTags() {
     setState(() {
       _selectedRecipeTags.clear();
     });
     _filterCustomRecipes();
   }
-  
+
   Future<void> _deleteFood(int id, bool isSimple, String foodName) async {
-    final bool confirm = await AlertHelper.showDeleteConfirmation(context, foodName);
-    
+    final bool confirm = await AlertHelper.showDeleteConfirmation(
+      context,
+      foodName,
+    );
+
     if (confirm) {
       try {
         await _foodService.deleteFood(id);
-        
+
         // Refresh the correct list
         if (isSimple) {
           _loadSimpleFoods();
@@ -333,13 +354,17 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         } else {
           _loadCompoundFoods();
         }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Food deleted')),
+
+        AlertHelper.showSuccessAlert(
+          context,
+          title: 'Food Deleted',
+          message: 'The food item has been removed.',
         );
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting food: ${e.toString()}')),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Delete Failed',
+          message: 'Error deleting food: ${e.toString()}',
         );
       }
     }
@@ -389,8 +414,13 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: Icon(
+              Icons.home_outlined,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            onPressed:
+                () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
         ],
       ),
@@ -424,20 +454,29 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Modern Tab Bar
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 24.0),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: TabBar(
                 controller: _tabController,
                 labelColor: Theme.of(context).colorScheme.onPrimary,
-                unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+                unselectedLabelColor:
+                    Theme.of(context).colorScheme.onSurfaceVariant,
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.normal,
+                  fontSize: 14,
+                ),
                 splashBorderRadius: BorderRadius.circular(12),
                 indicator: BoxDecoration(
                   color: Theme.of(context).colorScheme.primary,
@@ -454,15 +493,15 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Tab content
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
                   // Simple foods tab with search and tags
                   _buildSimpleFoodsTab(),
-                  
+
                   // Compound foods tab with search
                   _buildCompoundFoodsTab(),
 
@@ -471,7 +510,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 ],
               ),
             ),
-            
+
             // Bottom Action Buttons
             const SizedBox(height: 16),
             _buildAnimatedButtons(),
@@ -493,34 +532,41 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             decoration: InputDecoration(
               hintText: 'Search simple foods...',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _simpleSearchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _simpleSearchController.clear();
-                      },
-                    )
-                  : null,
+              suffixIcon:
+                  _simpleSearchController.text.isNotEmpty
+                      ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _simpleSearchController.clear();
+                        },
+                      )
+                      : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Tags section
         if (_availableTags.isNotEmpty) ...[
           Container(
@@ -535,7 +581,10 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     onTap: _clearAllTags,
                     child: Container(
                       height: 30, // Fixed height
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.red.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(15),
@@ -561,62 +610,85 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   ),
                   const SizedBox(width: 8),
                 ],
-                
+
                 // Tag chips with stable positioning
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: _availableTags.map((tag) {
-                        final isSelected = _selectedTags.contains(tag);
-                        
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: GestureDetector(
-                            onTap: () => _toggleTag(tag),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              height: 30, // Fixed height to match Clear All
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: isSelected 
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: isSelected 
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    tag,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isSelected 
-                                          ? Theme.of(context).colorScheme.onPrimary
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w500,
+                      children:
+                          _availableTags.map((tag) {
+                            final isSelected = _selectedTags.contains(tag);
+
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: GestureDetector(
+                                onTap: () => _toggleTag(tag),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  height: 30, // Fixed height to match Clear All
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isSelected
+                                            ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainerHighest
+                                                .withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color:
+                                          isSelected
+                                              ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .outline
+                                                  .withOpacity(0.3),
                                     ),
                                   ),
-                                  if (isSelected) ...[
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      Icons.close,
-                                      size: 14,
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                    ),
-                                  ],
-                                ],
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        tag,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color:
+                                              isSelected
+                                                  ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.onPrimary
+                                                  : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      if (isSelected) ...[
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          Icons.close,
+                                          size: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimary,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                            );
+                          }).toList(),
                     ),
                   ),
                 ),
@@ -625,20 +697,22 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           ),
           const SizedBox(height: 16),
         ],
-        
+
         // Food list with animations
         Expanded(
           child: _buildAnimatedFoodsList(
             foods: _filteredSimpleFoods,
-                          isLoading: _isLoadingSimple,
-                          isSimple: true,
+            isLoading: _isLoadingSimple,
+            isSimple: true,
             onRefresh: () {
               _loadSimpleFoods();
               _loadAvailableTags();
             },
-            emptyMessage: _simpleSearchController.text.isNotEmpty || _selectedTags.isNotEmpty
-                ? 'No simple foods match your search'
-                : 'No simple foods',
+            emptyMessage:
+                _simpleSearchController.text.isNotEmpty ||
+                        _selectedTags.isNotEmpty
+                    ? 'No simple foods match your search'
+                    : 'No simple foods',
           ),
         ),
       ],
@@ -656,44 +730,52 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             decoration: InputDecoration(
               hintText: 'Search compound foods...',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _compoundSearchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _compoundSearchController.clear();
-                      },
-                    )
-                  : null,
+              suffixIcon:
+                  _compoundSearchController.text.isNotEmpty
+                      ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _compoundSearchController.clear();
+                        },
+                      )
+                      : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
             ),
           ),
         ),
-        
+
         const SizedBox(height: 20),
-        
+
         // Food list with animations
         Expanded(
           child: _buildAnimatedFoodsList(
             foods: _filteredCompoundFoods,
-                          isLoading: _isLoadingCompound,
-                          isSimple: false,
-                          onRefresh: _loadCompoundFoods,
-            emptyMessage: _compoundSearchController.text.isNotEmpty
-                ? 'No compound foods match your search'
-                : 'No compound foods',
+            isLoading: _isLoadingCompound,
+            isSimple: false,
+            onRefresh: _loadCompoundFoods,
+            emptyMessage:
+                _compoundSearchController.text.isNotEmpty
+                    ? 'No compound foods match your search'
+                    : 'No compound foods',
           ),
         ),
       ],
@@ -711,34 +793,41 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             decoration: InputDecoration(
               hintText: 'Search AI recipes...',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _recipesSearchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _recipesSearchController.clear();
-                      },
-                    )
-                  : null,
+              suffixIcon:
+                  _recipesSearchController.text.isNotEmpty
+                      ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _recipesSearchController.clear();
+                        },
+                      )
+                      : null,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
             ),
           ),
         ),
-        
-                  const SizedBox(height: 16),
-        
+
+        const SizedBox(height: 16),
+
         // Tags section for recipes
         if (_availableRecipeTags.isNotEmpty) ...[
           Container(
@@ -753,7 +842,10 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     onTap: _clearAllRecipeTags,
                     child: Container(
                       height: 30, // Fixed height
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.red.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(15),
@@ -773,68 +865,93 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                ],
-              ),
-            ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 8),
                 ],
-                
+
                 // Tag chips with stable positioning
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: _availableRecipeTags.map((tag) {
-                        final isSelected = _selectedRecipeTags.contains(tag);
-                        
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: GestureDetector(
-                            onTap: () => _toggleRecipeTag(tag),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              height: 30, // Fixed height to match Clear All
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: isSelected 
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: isSelected 
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    tag,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isSelected 
-                                          ? Theme.of(context).colorScheme.onPrimary
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                                      fontWeight: FontWeight.w500,
+                      children:
+                          _availableRecipeTags.map((tag) {
+                            final isSelected = _selectedRecipeTags.contains(
+                              tag,
+                            );
+
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: GestureDetector(
+                                onTap: () => _toggleRecipeTag(tag),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  height: 30, // Fixed height to match Clear All
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isSelected
+                                            ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainerHighest
+                                                .withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color:
+                                          isSelected
+                                              ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .outline
+                                                  .withOpacity(0.3),
                                     ),
                                   ),
-                                  if (isSelected) ...[
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      Icons.close,
-                                      size: 14,
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                    ),
-                                  ],
-                                ],
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        tag,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color:
+                                              isSelected
+                                                  ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.onPrimary
+                                                  : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      if (isSelected) ...[
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          Icons.close,
+                                          size: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimary,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                            );
+                          }).toList(),
                     ),
                   ),
                 ),
@@ -843,15 +960,13 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           ),
           const SizedBox(height: 16),
         ],
-        
+
         // Recipes list with animations
-        Expanded(
-          child: _buildAnimatedRecipesList(),
-        ),
+        Expanded(child: _buildAnimatedRecipesList()),
       ],
     );
   }
-  
+
   Widget _buildFoodsList({
     required List<Food> foods,
     required bool isLoading,
@@ -860,11 +975,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     required String emptyMessage,
   }) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (foods.isEmpty) {
       return Center(
         child: Column(
@@ -873,7 +986,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Icon(
               isSimple ? Icons.restaurant : Icons.layers,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withOpacity(0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -886,13 +1001,17 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 8),
             Text(
-              isSimple && (_simpleSearchController.text.isEmpty && _selectedTags.isEmpty)
+              isSimple &&
+                      (_simpleSearchController.text.isEmpty &&
+                          _selectedTags.isEmpty)
                   ? 'Add your first simple food to get started'
                   : !isSimple && _compoundSearchController.text.isEmpty
-                      ? 'Add your first compound food to get started'
-                      : 'Try adjusting your search or filters',
+                  ? 'Add your first compound food to get started'
+                  : 'Try adjusting your search or filters',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -913,7 +1032,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         ),
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       child: ListView.builder(
@@ -940,28 +1059,31 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => LogEntryScreen(
-                        food: {
-                          'id': food.id!,
-                          'name': food.name,
-                          'calories': food.calories,
-                          'fat': food.fat,
-                          'carbs': food.carbs,
-                          'protein': food.protein,
-                          'defaultPortionSize': food.defaultPortionSize,
-                          'portionDescription': food.portionDescription,
-                        },
-                        date: widget.date!,
-                      ),
+                      builder:
+                          (context) => LogEntryScreen(
+                            food: {
+                              'id': food.id!,
+                              'name': food.name,
+                              'calories': food.calories,
+                              'fat': food.fat,
+                              'carbs': food.carbs,
+                              'protein': food.protein,
+                              'defaultPortionSize': food.defaultPortionSize,
+                              'portionDescription': food.portionDescription,
+                            },
+                            date: widget.date!,
+                          ),
                     ),
                   );
                 } else {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => food.type == 'simple'
-                          ? AddFoodScreen(food: food)
-                          : AddCompoundScreen(food: food),
+                      builder:
+                          (context) =>
+                              food.type == 'simple'
+                                  ? AddFoodScreen(food: food)
+                                  : AddCompoundScreen(food: food),
                     ),
                   ).then((_) {
                     onRefresh();
@@ -975,65 +1097,72 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 child: Column(
                   children: [
                     Row(
-                  children: [
-                    // Food icon
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        isSimple ? Icons.restaurant : Icons.layers,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    
-                    // Food details
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            food.name,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                      children: [
+                        // Food icon
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${food.calories.round()} cal per ${food.portionDescription}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          child: Icon(
+                            isSimple ? Icons.restaurant : Icons.layers,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24,
                           ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Delete button
-                    IconButton(
-                      onPressed: () => _deleteFood(food.id!, isSimple, food.name),
-                      icon: Icon(
-                        Icons.delete_outline,
-                        color: Colors.red.withOpacity(0.7),
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.red.withOpacity(0.1),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-                    ),
+                        const SizedBox(width: 16),
+
+                        // Food details
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                food.name,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${food.calories.round()} cal per ${food.portionDescription}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Delete button
+                        IconButton(
+                          onPressed:
+                              () => _deleteFood(food.id!, isSimple, food.name),
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: Colors.red.withOpacity(0.7),
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                    
+
                     // Tags for simple foods
                     if (isSimple && food.tags.isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -1042,21 +1171,35 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                         child: Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: food.tags.map((tag) => Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          )).toList(),
+                          children:
+                              food.tags
+                                  .map(
+                                    (tag) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHighest
+                                            .withOpacity(0.5),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        tag,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
                         ),
                       ),
                     ],
@@ -1072,11 +1215,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
 
   Widget _buildAnimatedRecipesList() {
     if (_isLoadingRecipes) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (_filteredCustomRecipes.isEmpty) {
       return Center(
         child: Column(
@@ -1085,11 +1226,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Icon(
               Icons.auto_awesome,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withOpacity(0.5),
             ),
             const SizedBox(height: 16),
             Text(
-              _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
+              _recipesSearchController.text.isNotEmpty ||
+                      _selectedRecipeTags.isNotEmpty
                   ? 'No AI recipes match your search'
                   : 'No AI recipes yet',
               style: TextStyle(
@@ -1100,30 +1244,47 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 8),
             Text(
-              _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
+              _recipesSearchController.text.isNotEmpty ||
+                      _selectedRecipeTags.isNotEmpty
                   ? 'Try adjusting your search or filters'
                   : 'Create your first AI-generated recipe using the meal planner',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
-                  ? () {
-                      _recipesSearchController.clear();
-                      _clearAllRecipeTags();
-                    }
-                  : () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AiMealPlannerScreen()),
+              onPressed:
+                  _recipesSearchController.text.isNotEmpty ||
+                          _selectedRecipeTags.isNotEmpty
+                      ? () {
+                        _recipesSearchController.clear();
+                        _clearAllRecipeTags();
+                      }
+                      : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AiMealPlannerScreen(),
+                        ),
                       ).then((_) {
                         _loadCustomRecipes();
                         _loadAvailableRecipeTags();
                       }),
-              icon: Icon(_recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty ? Icons.clear : Icons.add),
-              label: Text(_recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty ? 'Clear Search & Filters' : 'Create First Recipe'),
+              icon: Icon(
+                _recipesSearchController.text.isNotEmpty ||
+                        _selectedRecipeTags.isNotEmpty
+                    ? Icons.clear
+                    : Icons.add,
+              ),
+              label: Text(
+                _recipesSearchController.text.isNotEmpty ||
+                        _selectedRecipeTags.isNotEmpty
+                    ? 'Clear Search & Filters'
+                    : 'Create First Recipe',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1136,7 +1297,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         ),
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: () async {
         _loadCustomRecipes();
@@ -1154,33 +1315,31 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 end: Offset.zero,
               ).chain(CurveTween(curve: Curves.easeOutCubic)),
             ),
-            child: FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
+            child: FadeTransition(opacity: animation, child: child),
           );
         },
-      child: ListView.builder(
-          key: ValueKey(_filteredCustomRecipes.length), // Key changes when list changes
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: ListView.builder(
+          key: ValueKey(
+            _filteredCustomRecipes.length,
+          ), // Key changes when list changes
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           itemCount: _filteredCustomRecipes.length,
-        itemBuilder: (context, index) {
+          itemBuilder: (context, index) {
             final recipe = _filteredCustomRecipes[index];
             return TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 200 + (index * 50)), // Staggered animation
+              duration: Duration(
+                milliseconds: 200 + (index * 50),
+              ), // Staggered animation
               tween: Tween(begin: 0.0, end: 1.0),
               curve: Curves.easeOutCubic,
               builder: (context, value, child) {
                 return Transform.translate(
                   offset: Offset(0, 20 * (1 - value)),
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
+                  child: Opacity(opacity: value, child: child),
                 );
               },
               child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
+                margin: const EdgeInsets.only(bottom: 12),
                 child: _buildRecipeCard(recipe),
               ),
             );
@@ -1209,19 +1368,20 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => LogEntryScreen(
-                  food: {
-                    'id': recipe.foodId,
-                    'name': recipe.name,
-                    'calories': recipe.calories / recipe.servings,
-                    'fat': recipe.fat / recipe.servings,
-                    'carbs': recipe.carbs / recipe.servings,
-                    'protein': recipe.protein / recipe.servings,
-                    'defaultPortionSize': recipe.defaultPortionSize,
-                    'portionDescription': recipe.portionDescription,
-                  },
-                  date: widget.date!,
-                ),
+                builder:
+                    (context) => LogEntryScreen(
+                      food: {
+                        'id': recipe.foodId,
+                        'name': recipe.name,
+                        'calories': recipe.calories / recipe.servings,
+                        'fat': recipe.fat / recipe.servings,
+                        'carbs': recipe.carbs / recipe.servings,
+                        'protein': recipe.protein / recipe.servings,
+                        'defaultPortionSize': recipe.defaultPortionSize,
+                        'portionDescription': recipe.portionDescription,
+                      },
+                      date: widget.date!,
+                    ),
               ),
             );
           } else {
@@ -1248,7 +1408,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: _getDifficultyColor(recipe.difficulty).withOpacity(0.2),
+                      color: _getDifficultyColor(
+                        recipe.difficulty,
+                      ).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -1258,7 +1420,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
+
                   // Recipe details
                   Expanded(
                     child: Column(
@@ -1272,16 +1434,13 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                 ),
                               ),
                             ),
                             if (recipe.isFavorite)
-                              Icon(
-                                Icons.favorite,
-                                color: Colors.red,
-                                size: 16,
-                              ),
+                              Icon(Icons.favorite, color: Colors.red, size: 16),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -1289,7 +1448,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                           '${(recipe.calories / recipe.servings).round()} cal per ${recipe.portionDescription} • ${_capitalizeFirst(recipe.difficulty)}',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1297,29 +1457,41 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                           '${recipe.prepTimeMinutes + recipe.cookTimeMinutes} min total • ${recipe.servings} servings',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant.withOpacity(0.7),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  
+
                   // Delete button
                   IconButton(
                     onPressed: () async {
-                      final bool confirm = await AlertHelper.showDeleteConfirmation(context, recipe.name);
-                      
+                      final bool confirm =
+                          await AlertHelper.showDeleteConfirmation(
+                            context,
+                            recipe.name,
+                          );
+
                       if (confirm && recipe.id != null) {
                         try {
-                          await CustomRecipeService.deleteCustomRecipe(recipe.id!);
+                          await CustomRecipeService.deleteCustomRecipe(
+                            recipe.id!,
+                          );
                           _loadCustomRecipes();
                           _loadAvailableRecipeTags();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Recipe deleted')),
+                          AlertHelper.showSuccessAlert(
+                            context,
+                            title: 'Recipe Deleted',
+                            message: 'The recipe has been removed.',
                           );
                         } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error deleting recipe: ${e.toString()}')),
+                          AlertHelper.showErrorAlert(
+                            context,
+                            title: 'Delete Failed',
+                            message: 'Error deleting recipe: ${e.toString()}',
                           );
                         }
                       }
@@ -1337,7 +1509,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   ),
                 ],
               ),
-              
+
               // Tags for recipes
               if (recipe.tags.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -1346,21 +1518,35 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   child: Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: recipe.tags.map((tag) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        tag,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )).toList(),
+                    children:
+                        recipe.tags
+                            .map(
+                              (tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
               ],
@@ -1370,7 +1556,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
       ),
     );
   }
-  
+
   Widget _buildAnimatedButtons() {
     return AnimatedBuilder(
       animation: _tabController,
@@ -1395,7 +1581,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const AddFoodScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const AddFoodScreen(),
+                    ),
                   ).then((_) => _loadSimpleFoods());
                 },
               ),
@@ -1408,7 +1596,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const BarcodeScannerScreen(),
+                    ),
                   ).then((refreshNeeded) {
                     if (refreshNeeded == true) {
                       _loadSimpleFoods();
@@ -1421,56 +1611,52 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           ],
         );
       case 1: // Compound foods
-        return _buildActionButton(
-          'Add Compound Food',
-          Icons.layers,
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddCompoundScreen()),
-            ).then((_) => _loadCompoundFoods());
-          },
-        );
+        return _buildActionButton('Add Compound Food', Icons.layers, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddCompoundScreen()),
+          ).then((_) => _loadCompoundFoods());
+        });
       case 2: // AI Recipes
-        return _buildActionButton(
-          'Create AI Recipe',
-          Icons.auto_awesome,
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AiMealPlannerScreen()),
-            ).then((_) => _loadCustomRecipes());
-          },
-        );
+        return _buildActionButton('Create AI Recipe', Icons.auto_awesome, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AiMealPlannerScreen(),
+            ),
+          ).then((_) => _loadCustomRecipes());
+        });
       default:
         return Container();
     }
   }
-  
-  Widget _buildActionButton(String text, IconData icon, VoidCallback onTap, {bool isSecondary = false}) {
+
+  Widget _buildActionButton(
+    String text,
+    IconData icon,
+    VoidCallback onTap, {
+    bool isSecondary = false,
+  }) {
     return ElevatedButton.icon(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
-        backgroundColor: isSecondary 
-            ? Theme.of(context).colorScheme.surfaceContainerHighest
-            : Theme.of(context).colorScheme.primary,
-        foregroundColor: isSecondary 
-            ? Theme.of(context).colorScheme.onSurfaceVariant
-            : Theme.of(context).colorScheme.onPrimary,
+        backgroundColor:
+            isSecondary
+                ? Theme.of(context).colorScheme.surfaceContainerHighest
+                : Theme.of(context).colorScheme.primary,
+        foregroundColor:
+            isSecondary
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : Theme.of(context).colorScheme.onPrimary,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         minimumSize: const Size.fromHeight(56),
         elevation: isSecondary ? 0 : 2,
       ),
       icon: Icon(icon, size: 20),
       label: Text(
         text,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 16,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
       ),
     );
   }
@@ -1483,11 +1669,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     required String emptyMessage,
   }) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
-    
+
     if (foods.isEmpty) {
       return Center(
         child: Column(
@@ -1496,7 +1680,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Icon(
               isSimple ? Icons.restaurant : Icons.layers,
               size: 64,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withOpacity(0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -1509,13 +1695,17 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 8),
             Text(
-              isSimple && (_simpleSearchController.text.isEmpty && _selectedTags.isEmpty)
+              isSimple &&
+                      (_simpleSearchController.text.isEmpty &&
+                          _selectedTags.isEmpty)
                   ? 'Add your first simple food to get started'
                   : !isSimple && _compoundSearchController.text.isEmpty
-                      ? 'Add your first compound food to get started'
-                      : 'Try adjusting your search or filters',
+                  ? 'Add your first compound food to get started'
+                  : 'Try adjusting your search or filters',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withOpacity(0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -1536,7 +1726,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         ),
       );
     }
-    
+
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
       child: AnimatedSwitcher(
@@ -1551,10 +1741,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                 end: Offset.zero,
               ).chain(CurveTween(curve: Curves.easeOutCubic)),
             ),
-            child: FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
+            child: FadeTransition(opacity: animation, child: child),
           );
         },
         child: ListView.builder(
@@ -1564,16 +1751,15 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           itemBuilder: (context, index) {
             final food = foods[index];
             return TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 200 + (index * 50)), // Staggered animation
+              duration: Duration(
+                milliseconds: 200 + (index * 50),
+              ), // Staggered animation
               tween: Tween(begin: 0.0, end: 1.0),
               curve: Curves.easeOutCubic,
               builder: (context, value, child) {
                 return Transform.translate(
                   offset: Offset(0, 20 * (1 - value)),
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
+                  child: Opacity(opacity: value, child: child),
                 );
               },
               child: Container(
@@ -1606,28 +1792,31 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => LogEntryScreen(
-                  food: {
-                    'id': food.id!,
-                    'name': food.name,
-                    'calories': food.calories,
-                    'fat': food.fat,
-                    'carbs': food.carbs,
-                    'protein': food.protein,
-                    'defaultPortionSize': food.defaultPortionSize,
-                    'portionDescription': food.portionDescription,
-                  },
-                  date: widget.date!,
-                ),
+                builder:
+                    (context) => LogEntryScreen(
+                      food: {
+                        'id': food.id!,
+                        'name': food.name,
+                        'calories': food.calories,
+                        'fat': food.fat,
+                        'carbs': food.carbs,
+                        'protein': food.protein,
+                        'defaultPortionSize': food.defaultPortionSize,
+                        'portionDescription': food.portionDescription,
+                      },
+                      date: widget.date!,
+                    ),
               ),
             );
           } else {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => food.type == 'simple'
-                    ? AddFoodScreen(food: food)
-                    : AddCompoundScreen(food: food),
+                builder:
+                    (context) =>
+                        food.type == 'simple'
+                            ? AddFoodScreen(food: food)
+                            : AddCompoundScreen(food: food),
               ),
             ).then((_) {
               onRefresh();
@@ -1647,7 +1836,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -1657,7 +1848,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
+
                   // Food details
                   Expanded(
                     child: Column(
@@ -1676,13 +1867,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                           '${food.calories.round()} cal per ${food.portionDescription}',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  
+
                   // Delete button
                   IconButton(
                     onPressed: () => _deleteFood(food.id!, isSimple, food.name),
@@ -1699,7 +1891,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   ),
                 ],
               ),
-              
+
               // Tags for simple foods
               if (isSimple && food.tags.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -1708,21 +1900,35 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
                   child: Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: food.tags.map((tag) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        tag,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )).toList(),
+                    children:
+                        food.tags
+                            .map(
+                              (tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color:
+                                        Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                   ),
                 ),
               ],

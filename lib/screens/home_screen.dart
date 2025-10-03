@@ -142,10 +142,14 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _openSettings() {
+  void _openSettings([bool focusFasting = false]) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(
+          openFastingSection: focusFasting,
+        ),
+      ),
     ).then((_) {
       _loadFastingSettings();
       _loadTodayCalories();
@@ -169,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
       status: status,
       settings: settings,
       streakDays: _fastingStreakDays,
-      onConfigure: _openSettings,
+      onConfigure: () => _openSettings(true),
       timeRemaining: _timeUntilChange,
     );
   }
@@ -254,11 +258,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error requesting health permissions: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Health Permissions Failed',
+          message: 'Error requesting health permissions: $e',
         );
       }
     }

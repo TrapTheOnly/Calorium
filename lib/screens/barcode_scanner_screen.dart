@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:openfoodfacts/openfoodfacts.dart';
 import '../models/food.dart';
+import '../widgets/custom_alert.dart';
 import 'add_food_screen.dart';
 
 class BarcodeScannerScreen extends StatefulWidget {
@@ -27,12 +28,15 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         fields: [ProductField.ALL],
         version: ProductQueryVersion.v3,
       );
-      
-      final ProductResultV3 result = await OpenFoodAPIClient.getProductV3(configuration);
 
-      if (result.status == ProductResultV3.statusSuccess && result.product != null) {
+      final ProductResultV3 result = await OpenFoodAPIClient.getProductV3(
+        configuration,
+      );
+
+      if (result.status == ProductResultV3.statusSuccess &&
+          result.product != null) {
         final product = result.product!;
-        
+
         // Extract nutrition values
         double calories = 0, fat = 0, carbs = 0, protein = 0;
         double servingSize = 100.0;
@@ -46,20 +50,28 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             portionDescription = product.servingSize!;
           }
         }
-        
+
         if (product.nutriments != null) {
           final nutriments = product.nutriments!;
 
-          final kJValue = nutriments.getComputedKJ(PerSize.oneHundredGrams) ?? 0.0;
+          final kJValue =
+              nutriments.getComputedKJ(PerSize.oneHundredGrams) ?? 0.0;
           calories = NutrimentsHelper.fromKJtoKCal(kJValue);
-          
 
           // Extract other macronutrients
-          fat = nutriments.getValue(Nutrient.fat, PerSize.oneHundredGrams) ?? 0.0;
-          carbs = nutriments.getValue(Nutrient.carbohydrates, PerSize.oneHundredGrams) ?? 0.0;
-          protein = nutriments.getValue(Nutrient.proteins, PerSize.oneHundredGrams) ?? 0.0;
+          fat =
+              nutriments.getValue(Nutrient.fat, PerSize.oneHundredGrams) ?? 0.0;
+          carbs =
+              nutriments.getValue(
+                Nutrient.carbohydrates,
+                PerSize.oneHundredGrams,
+              ) ??
+              0.0;
+          protein =
+              nutriments.getValue(Nutrient.proteins, PerSize.oneHundredGrams) ??
+              0.0;
         }
-        
+
         // Create Food object from product data with fromBarcode flag set to true
         final food = Food(
           name: product.productName ?? 'Unknown Product',
@@ -76,26 +88,26 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         if (mounted) {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => AddFoodScreen(
-                food: food,
-              ),
-            ),
+            MaterialPageRoute(builder: (context) => AddFoodScreen(food: food)),
           ).then((_) {
             Navigator.pop(context, true);
           });
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Product not found in database')),
+          AlertHelper.showErrorAlert(
+            context,
+            title: 'Product Not Found',
+            message: 'The scanned product is not available in the database.',
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Scanning Failed',
+          message: 'Error: ${e.toString()}',
         );
       }
     } finally {
@@ -108,10 +120,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: Text('Scan Barcode', 
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
+        title: Text(
+          'Scan Barcode',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         actions: [
           IconButton(
@@ -120,11 +131,15 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               builder: (context, state, child) {
                 switch (state) {
                   case TorchState.off:
-                    return Icon(Icons.flash_off, 
-                      color: Theme.of(context).colorScheme.primary);
+                    return Icon(
+                      Icons.flash_off,
+                      color: Theme.of(context).colorScheme.primary,
+                    );
                   case TorchState.on:
-                    return Icon(Icons.flash_on, 
-                      color: Theme.of(context).colorScheme.primary);
+                    return Icon(
+                      Icons.flash_on,
+                      color: Theme.of(context).colorScheme.primary,
+                    );
                 }
               },
             ),

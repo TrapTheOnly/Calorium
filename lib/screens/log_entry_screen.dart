@@ -28,6 +28,7 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
   final LogService _logService = LogService();
   bool _usePortions = false;
   double _portions = 1.0;
+  TimeOfDay _selectedTime = const TimeOfDay(hour: 14, minute: 0);
 
   // Get the default portion size and description from food data or use defaults
   double get _defaultPortionSize => widget.food['defaultPortionSize'] ?? 100.0;
@@ -82,15 +83,58 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
   Future<void> _loadExistingAmount() async {
     final entries = await _logService.getLogEntriesByDate(widget.date);
     final entry = entries.firstWhere((e) => e.id == widget.logId);
+    final entryTime = TimeOfDay(
+      hour: entry.loggedAt.hour,
+      minute: entry.loggedAt.minute,
+    );
 
     if (entry.portions != null && entry.portions! > 0) {
       setState(() {
         _usePortions = true;
         _portions = entry.portions ?? 1.0;
         _amountController.text = _portions.toString();
+        _selectedTime = entryTime;
       });
     } else {
-      _amountController.text = entry.amount.toString();
+      setState(() {
+        _amountController.text = entry.amount.toString();
+        _selectedTime = entryTime;
+      });
+    }
+  }
+
+  Future<void> _pickLogTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedTime = picked;
+      });
+    }
+  }
+
+  DateTime _combineDateWithSelectedTime() {
+    try {
+      final parsed = DateTime.parse(widget.date);
+      return DateTime(
+        parsed.year,
+        parsed.month,
+        parsed.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
+    } catch (_) {
+      final now = DateTime.now();
+      return DateTime(
+        now.year,
+        now.month,
+        now.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
     }
   }
 
@@ -116,6 +160,7 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
           amount: amount,
           portions: portions,
           date: widget.date,
+          loggedAt: _combineDateWithSelectedTime(),
         ),
       );
       Navigator.pop(context);
@@ -125,6 +170,7 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
         amount: amount,
         portions: portions,
         date: widget.date,
+        loggedAt: _combineDateWithSelectedTime(),
       );
 
       await _logService.insertLogEntry(entry);
@@ -463,6 +509,79 @@ class _LogEntryScreenState extends State<LogEntryScreen> {
                         ],
                       ),
                     ],
+                  ),
+                ),
+
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: _pickLogTime,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.schedule,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Time Eaten',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                MaterialLocalizations.of(
+                                  context,
+                                ).formatTimeOfDay(_selectedTime),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.edit_outlined,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 

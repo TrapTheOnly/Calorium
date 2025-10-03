@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/log_service.dart';
+import '../widgets/custom_alert.dart';
 import 'daily_log_screen.dart';
 
 class DatePickerScreen extends StatefulWidget {
@@ -24,25 +25,21 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
   Future<void> _loadWeekData() async {
     List<Map<String, dynamic>> data = [];
     final today = DateTime.now();
-    
+
     for (int i = 0; i < 7; i++) {
       final date = DateTime(today.year, today.month, today.day - i);
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       final prettyDate = DateFormat('MMM d').format(date);
-      
+
       final entries = await _logService.getLogEntriesByDate(dateStr);
       double sum = 0;
       for (var entry in entries) {
         sum += entry.calories! * entry.amount / 100;
       }
-      
-      data.add({
-        'dateStr': dateStr,
-        'pretty': prettyDate,
-        'cal': sum,
-      });
+
+      data.add({'dateStr': dateStr, 'pretty': prettyDate, 'cal': sum});
     }
-    
+
     setState(() {
       weekData = data;
     });
@@ -54,7 +51,9 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
         context: context,
         initialDate: selectedDate,
         firstDate: DateTime(2020),
-        lastDate: DateTime.now().add(const Duration(days: 365)), // Allow future dates up to 1 year
+        lastDate: DateTime.now().add(
+          const Duration(days: 365),
+        ), // Allow future dates up to 1 year
         builder: (context, child) {
           return Theme(
             data: Theme.of(context).copyWith(
@@ -69,16 +68,16 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
           );
         },
       );
-      
+
       if (picked != null) {
         // Update selected date
         setState(() {
           selectedDate = picked;
         });
-        
+
         // Format the date consistently
         final dateStr = DateFormat('yyyy-MM-dd').format(picked);
-        
+
         // Navigate to daily log screen with the selected date
         if (mounted) {
           Navigator.push(
@@ -92,11 +91,10 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
     } catch (e) {
       // Show error message if something goes wrong
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error selecting date: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
+        AlertHelper.showErrorAlert(
+          context,
+          title: 'Date Selection Failed',
+          message: 'Error selecting date: $e',
         );
       }
     }
@@ -118,8 +116,13 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            icon: Icon(
+              Icons.home_outlined,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            onPressed:
+                () => Navigator.of(context).popUntil((route) => route.isFirst),
           ),
         ],
       ),
@@ -138,7 +141,7 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               Expanded(
                 child: ListView.builder(
                   itemCount: weekData.length,
@@ -149,7 +152,9 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => DailyLogScreen(date: item['dateStr']),
+                            builder:
+                                (context) =>
+                                    DailyLogScreen(date: item['dateStr']),
                           ),
                         );
                       },
@@ -171,7 +176,10 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer,
                               ),
                             ),
                             Text(
@@ -179,7 +187,10 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer,
                               ),
                             ),
                           ],
@@ -189,21 +200,15 @@ class _DatePickerScreenState extends State<DatePickerScreen> {
                   },
                 ),
               ),
-              
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () => _selectDate(context),
-                  icon: Icon(
-                    Icons.calendar_today_rounded,
-                    size: 20,
-                  ),
+                  icon: Icon(Icons.calendar_today_rounded, size: 20),
                   label: const Text(
                     'Pick Another Date',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,

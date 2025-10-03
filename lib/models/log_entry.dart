@@ -27,7 +27,7 @@ class LogEntry {
     this.portions = 1.0,
     this.defaultPortionSize,
     this.portionDescription,
-  }) : loggedAt = loggedAt ?? DateTime.now();
+  }) : loggedAt = loggedAt ?? _defaultLoggedAt(date);
 
   Map<String, dynamic> toMap() {
     return {
@@ -49,7 +49,7 @@ class LogEntry {
       loggedAt:
           map['loggedAt'] != null
               ? DateTime.fromMillisecondsSinceEpoch(map['loggedAt'])
-              : DateTime.tryParse(map['date'] ?? '') ?? DateTime.now(),
+              : _defaultLoggedAt(map['date'] ?? ''),
       foodName: map['name'],
       calories: map['calories'],
       fat: map['fat'],
@@ -59,5 +59,26 @@ class LogEntry {
       defaultPortionSize: map['defaultPortionSize'],
       portionDescription: map['portionDescription'],
     );
+  }
+
+  static DateTime _defaultLoggedAt(String date) {
+    DateTime targetDate;
+    try {
+      targetDate = DateTime.parse(date);
+    } catch (_) {
+      return DateTime.now();
+    }
+
+    final now = DateTime.now();
+    final isToday =
+        targetDate.year == now.year &&
+        targetDate.month == now.month &&
+        targetDate.day == now.day;
+
+    if (isToday) {
+      return now;
+    }
+
+    return DateTime(targetDate.year, targetDate.month, targetDate.day, 14);
   }
 }
