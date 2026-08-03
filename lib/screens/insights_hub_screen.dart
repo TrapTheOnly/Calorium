@@ -91,15 +91,9 @@ class _InsightsHubScreenState extends State<InsightsHubScreen> {
     final logged = week.where((d) => d.hasData).toList();
     final daysWithData = logged.length;
 
-    // Current streak: consecutive logged days ending today (newest last).
-    int streak = 0;
-    for (int i = week.length - 1; i >= 0; i--) {
-      if (week[i].hasData) {
-        streak++;
-      } else {
-        break;
-      }
-    }
+    // Full streak (not just this 7-day window): walk back over every logged day
+    // so streaks longer than a week aren't capped at 7.
+    final streak = await logService.getCurrentStreak();
 
     final avgCalories = logged.isEmpty
         ? 0.0
