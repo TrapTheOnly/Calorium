@@ -24,9 +24,19 @@ class SmartMealPlannerService {
     );
   }
 
-  /// Generate a personalized meal recommendation based on available ingredients and user context
+  /// Generate a personalized meal recommendation.
+  ///
+  /// The recipe can be seeded from any combination of:
+  /// - [availableIngredients]: scanned-from-photo ingredients (with metadata),
+  /// - [pantryItems]: plain names picked from the user's inventory,
+  /// - [freeText]: a natural-language description of what they want,
+  /// - [targetMacros]: macros the recipe should aim to provide (keys:
+  ///   `calories`, `protein`, `carbs`, `fat`) — used by the "fill the gap" flow.
   static Future<Map<String, dynamic>?> generateMealRecommendation({
-    required List<Map<String, dynamic>> availableIngredients,
+    List<Map<String, dynamic>>? availableIngredients,
+    List<String>? pantryItems,
+    String? freeText,
+    Map<String, double>? targetMacros,
     required Map<String, String> userPreferences,
     String? currentDate,
   }) async {
@@ -91,6 +101,43 @@ class SmartMealPlannerService {
         timeContext = 'light meal or healthy snack';
       }
 
+      // Build the ingredient/context block from whichever inputs were supplied.
+      final inputBuffer = StringBuffer();
+      if (availableIngredients != null && availableIngredients.isNotEmpty) {
+        inputBuffer.writeln('AVAILABLE INGREDIENTS (identified from a photo):');
+        inputBuffer.writeln(
+          availableIngredients
+              .map((ing) =>
+                  '• ${ing['name']} (${ing['quantity'] ?? 'some'})'
+                  '${ing['freshness'] != null ? ' - ${ing['freshness']} condition' : ''}')
+              .join('\n'),
+        );
+      }
+      if (pantryItems != null && pantryItems.isNotEmpty) {
+        inputBuffer.writeln('INGREDIENTS ON HAND (from the user\'s inventory):');
+        inputBuffer.writeln(pantryItems.map((p) => '• $p').join('\n'));
+      }
+      if (freeText != null && freeText.trim().isNotEmpty) {
+        inputBuffer.writeln('USER REQUEST: "${freeText.trim()}"');
+      }
+      if (inputBuffer.isEmpty) {
+        inputBuffer.writeln(
+          'No specific ingredients provided — suggest a realistic recipe using '
+          'common, easy-to-find staples.',
+        );
+      }
+      final inputSection = inputBuffer.toString();
+
+      final targetSection = targetMacros != null
+          ? 'RECIPE MACRO TARGET — make it a single serving whose TOTAL nutrition '
+              'lands close to:\n'
+              '- Calories: ~${(targetMacros['calories'] ?? 0).round()} kcal\n'
+              '- Protein: ~${(targetMacros['protein'] ?? 0).round()} g\n'
+              '- Carbs: ~${(targetMacros['carbs'] ?? 0).round()} g\n'
+              '- Fat: ~${(targetMacros['fat'] ?? 0).round()} g\n'
+              'Prefer servings = 1 so the numbers match this target.\n'
+          : '';
+
       final requestBody = {
         "contents": [
           {
@@ -115,9 +162,8 @@ TIME CONTEXT:
 - Current time: $hour:00 (suggesting $mealTime)
 - Focus: $timeContext
 
-AVAILABLE INGREDIENTS:
-${availableIngredients.map((ing) => '• ${ing['name']} (${ing['quantity']}) - ${ing['category']} - ${ing['freshness']} condition').join('\n')}
-
+$inputSection
+$targetSection
 USER PREFERENCES:
 - Available time: ${userPreferences['timeAvailable'] ?? 'Not specified'}
 - Cooking skill: ${userPreferences['cookingSkill'] ?? 'Not specified'}
@@ -328,11 +374,10 @@ GUIDELINES:
       difficulty: mealRecommendation['difficulty'],
       tags: tags,
       aiGeneratedPrompt: aiPrompt,
-      defaultPortionSize:
-          (nutrition['calories'] as num).toDouble() /
-          (mealRecommendation['servings'] as int) *
-          100 /
-          100, // Rough estimate for portion size
+      // A recipe's canonical logging unit is one serving == 100 nominal units,
+      // so the linked food row stores per-serving nutrition in the per-100
+      // columns. Keep this at 100 so logging N servings resolves to amount=100*N.
+      defaultPortionSize: 100.0,
       portionDescription: '1 serving',
     );
   }

@@ -1,16 +1,32 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+
+import '../models/custom_recipe.dart';
+import '../models/food.dart';
+import '../services/custom_recipe_service.dart';
+import '../services/food_service.dart';
 import '../services/ingredient_scanner_service.dart';
 import '../services/smart_meal_planner_service.dart';
-import '../services/custom_recipe_service.dart';
-import '../models/custom_recipe.dart';
+import '../theme/app_theme.dart';
+import '../utils/num_format.dart';
 import '../widgets/custom_alert.dart';
+import '../widgets/ui_kit.dart';
 import 'custom_recipe_detail_screen.dart';
 import 'custom_recipes_screen.dart';
 
+/// How the user seeds the recipe generation.
+enum RecipeInputMode { photo, inventory, describe }
+
 class AiMealPlannerScreen extends StatefulWidget {
-  const AiMealPlannerScreen({super.key});
+  const AiMealPlannerScreen({
+    super.key,
+    this.initialTargetMacros,
+  });
+
+  /// When provided (e.g. from the "close today's gap" flow), the screen opens
+  /// in describe mode with these macro targets pre-filled.
+  final Map<String, double>? initialTargetMacros;
 
   @override
   State<AiMealPlannerScreen> createState() => _AiMealPlannerScreenState();
@@ -18,118 +34,141 @@ class AiMealPlannerScreen extends StatefulWidget {
 
 class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
   final ImagePicker _picker = ImagePicker();
-  
-  // State management
+  final FoodService _foodService = FoodService();
+
+  int _step = 0; // 0 input · 1 preferences · 2 recipe · 3 saved
+  late RecipeInputMode _mode;
+
+  // Photo mode
   File? _scannedImage;
   Map<String, dynamic>? _scannedIngredients;
+  bool _isScanning = false;
+
+  // Inventory mode
+  List<Food> _basics = [];
+  bool _basicsLoading = false;
+  final Set<int> _selectedBasics = {};
+  final TextEditingController _basicsSearch = TextEditingController();
+
+  // Describe mode
+  final TextEditingController _descCtrl = TextEditingController();
+  final TextEditingController _calCtrl = TextEditingController();
+  final TextEditingController _proteinCtrl = TextEditingController();
+  final TextEditingController _carbCtrl = TextEditingController();
+  final TextEditingController _fatCtrl = TextEditingController();
+
   final Map<String, String> _userPreferences = {};
+
   Map<String, dynamic>? _mealRecommendation;
   CustomRecipe? _generatedRecipe;
-  
-  bool _isScanning = false;
   bool _isGenerating = false;
+  bool _generateRequested = false;
   bool _isSaving = false;
-  int _currentStep = 0;
 
-  final List<String> _steps = [
-    'Scan Ingredients',
-    'Answer Questions',
-    'Get Recipe',
-    'Save & Cook!'
-  ];
+  final List<String> _steps = ['Input', 'Preferences', 'Recipe', 'Saved'];
+
+  @override
+  void initState() {
+    super.initState();
+    final target = widget.initialTargetMacros;
+    _mode = target != null ? RecipeInputMode.describe : RecipeInputMode.photo;
+    if (target != null) {
+      if ((target['calories'] ?? 0) > 0) {
+        _calCtrl.text = target['calories']!.round().toString();
+      }
+      if ((target['protein'] ?? 0) > 0) {
+        _proteinCtrl.text = target['protein']!.round().toString();
+      }
+      if ((target['carbs'] ?? 0) > 0) {
+        _carbCtrl.text = target['carbs']!.round().toString();
+      }
+      if ((target['fat'] ?? 0) > 0) {
+        _fatCtrl.text = target['fat']!.round().toString();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _basicsSearch.dispose();
+    _descCtrl.dispose();
+    _calCtrl.dispose();
+    _proteinCtrl.dispose();
+    _carbCtrl.dispose();
+    _fatCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'AI Recipe Generator',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      appBar: PageAppBar(
+        title: 'AI Recipe',
+        subtitle: 'Generate a recipe your way',
         actions: [
           IconButton(
-            icon: Icon(
-              Icons.restaurant_menu,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+            icon: const Icon(Icons.restaurant_menu_rounded),
             onPressed: _navigateToCustomRecipes,
-            tooltip: 'My Custom Recipes',
-          ),
-          IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            tooltip: 'My recipes',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildStepIndicator(),
-          Expanded(
-            child: _buildCurrentStepContent(),
-          ),
-        ],
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            _buildStepIndicator(),
+            Expanded(child: _buildStep()),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildStepIndicator() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.pagePadding,
+        vertical: AppTheme.space12,
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (int index = 0; index < _steps.length; index++) ...[
+          for (int i = 0; i < _steps.length; i++) ...[
             Container(
-              width: 32,
-              height: 32,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: index < _currentStep
-                    ? Theme.of(context).colorScheme.primary
-                    : index == _currentStep
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                color: i <= _step
+                    ? scheme.primary
+                    : scheme.surfaceContainerHighest,
               ),
               child: Center(
-                child: index < _currentStep
-                    ? Icon(
-                        Icons.check,
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        size: 16,
-                      )
+                child: i < _step
+                    ? Icon(Icons.check_rounded,
+                        size: 15, color: scheme.onPrimary)
                     : Text(
-                        '${index + 1}',
+                        '${i + 1}',
                         style: TextStyle(
-                          color: index == _currentStep
-                              ? Theme.of(context).colorScheme.onPrimary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.bold,
                           fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: i == _step
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant,
                         ),
                       ),
               ),
             ),
-            if (index < _steps.length - 1)
-              Container(
-                width: 40,
-                height: 2,
-                color: index < _currentStep
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                margin: const EdgeInsets.symmetric(horizontal: 8),
+            if (i < _steps.length - 1)
+              Expanded(
+                child: Container(
+                  height: 2,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  color: i < _step
+                      ? scheme.primary
+                      : scheme.surfaceContainerHighest,
+                ),
               ),
           ],
         ],
@@ -137,420 +176,432 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     );
   }
 
-  Widget _buildCurrentStepContent() {
-    switch (_currentStep) {
+  Widget _buildStep() {
+    switch (_step) {
       case 0:
-        return _buildIngredientScanStep();
+        return _buildInputStep();
       case 1:
         return _buildQuestionnaireStep();
       case 2:
-        return _buildRecipeGenerationStep();
-      case 3:
-        return _buildSaveRecipeStep();
+        return _buildRecipeStep();
       default:
-        return const Center(child: Text('Invalid step'));
+        return _buildSavedStep();
     }
   }
 
-  Widget _buildIngredientScanStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+  // ---------------------------------------------------------------------------
+  // Step 0 — input
+
+  bool get _inputReady {
+    switch (_mode) {
+      case RecipeInputMode.photo:
+        return _scannedIngredients != null;
+      case RecipeInputMode.inventory:
+        return _selectedBasics.isNotEmpty;
+      case RecipeInputMode.describe:
+        return _descCtrl.text.trim().isNotEmpty ||
+            _calCtrl.text.trim().isNotEmpty ||
+            _proteinCtrl.text.trim().isNotEmpty;
+    }
+  }
+
+  Widget _buildInputStep() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.pagePadding,
+        0,
+        AppTheme.pagePadding,
+        AppTheme.space24,
+      ),
+      children: [
+        SegmentedButton<RecipeInputMode>(
+          style: SegmentedButton.styleFrom(
+            textStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            visualDensity: VisualDensity.compact,
+          ),
+          segments: const [
+            ButtonSegment(
+              value: RecipeInputMode.photo,
+              icon: Icon(Icons.photo_camera_outlined, size: 18),
+              label: Text('Photo', maxLines: 1),
+            ),
+            ButtonSegment(
+              value: RecipeInputMode.inventory,
+              icon: Icon(Icons.kitchen_outlined, size: 18),
+              label: Text('Inventory', maxLines: 1),
+            ),
+            ButtonSegment(
+              value: RecipeInputMode.describe,
+              icon: Icon(Icons.edit_outlined, size: 18),
+              label: Text('Describe', maxLines: 1),
+            ),
+          ],
+          selected: {_mode},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) {
+            setState(() => _mode = s.first);
+            if (_mode == RecipeInputMode.inventory && _basics.isEmpty) {
+              _loadBasics();
+            }
+          },
+        ),
+        const SizedBox(height: AppTheme.space16),
+        if (_mode == RecipeInputMode.photo) _photoInput(),
+        if (_mode == RecipeInputMode.inventory) _inventoryInput(),
+        if (_mode == RecipeInputMode.describe) _describeInput(),
+        const SizedBox(height: AppTheme.space24),
+        FilledButton(
+          onPressed: _inputReady ? () => setState(() => _step = 1) : null,
+          child: const Text('Continue'),
+        ),
+      ],
+    );
+  }
+
+  Widget _photoInput() {
+    final scheme = Theme.of(context).colorScheme;
+    return SectionCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Let\'s see what you have to work with!',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
+          Text(
+            'Snap your fridge or ingredients',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Take a photo of your fridge, pantry, or ingredients laid out on your counter. Our AI will identify what you have available.',
-            style: TextStyle(fontSize: 16),
-            textAlign: TextAlign.center,
+          const SizedBox(height: 4),
+          Text(
+            'The AI identifies what you have and builds a recipe around it.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
-          const SizedBox(height: 24),
-          
+          const SizedBox(height: AppTheme.space16),
           if (_scannedImage != null) ...[
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.3)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(_scannedImage!, fit: BoxFit.cover),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              child: Image.file(
+                _scannedImage!,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.space12),
           ],
-
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isScanning ? null : () => _pickImage(ImageSource.camera),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Take Photo'),
+                child: FilledButton.tonalIcon(
+                  onPressed:
+                      _isScanning ? null : () => _pickImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('Camera'),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppTheme.space12),
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isScanning ? null : () => _pickImage(ImageSource.gallery),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.secondary,
-                    foregroundColor: Theme.of(context).colorScheme.onSecondary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text('Choose Photo'),
+                child: FilledButton.tonalIcon(
+                  onPressed:
+                      _isScanning ? null : () => _pickImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Gallery'),
                 ),
               ),
             ],
           ),
-
           if (_isScanning) ...[
-            const SizedBox(height: 24),
-            CircularProgressIndicator(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Analyzing your ingredients...',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+            const SizedBox(height: AppTheme.space16),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: AppTheme.space12),
+                Text('Analyzing ingredients…',
+                    style: Theme.of(context).textTheme.bodyMedium),
+              ],
             ),
           ],
-
           if (_scannedIngredients != null) ...[
-            const SizedBox(height: 24),
-            _buildIngredientsPreview(),
+            const SizedBox(height: AppTheme.space16),
+            _scannedChips(),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildIngredientsPreview() {
-    final ingredients = _scannedIngredients!['ingredients'] as List;
-    final suggestions = _scannedIngredients!['suggestions'] as List;
-    
+  Widget _scannedChips() {
+    final ingredients = (_scannedIngredients!['ingredients'] as List?) ?? [];
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Found ${ingredients.length} ingredients:',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        Text('Found ${ingredients.length} ingredients',
+            style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: AppTheme.space8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: ingredients.map((ing) {
+            return Chip(
+              label: Text(ing['name']?.toString() ?? ''),
+              backgroundColor: scheme.surfaceContainerHigh,
+              side: BorderSide.none,
+              visualDensity: VisualDensity.compact,
+            );
+          }).toList(),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'The percentages show our AI\'s confidence in identifying each ingredient.',
-          style: TextStyle(
-            fontSize: 14,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontStyle: FontStyle.italic,
+      ],
+    );
+  }
+
+  Widget _inventoryInput() {
+    final scheme = Theme.of(context).colorScheme;
+    final query = _basicsSearch.text.trim().toLowerCase();
+    final filtered = _basics
+        .where((f) => query.isEmpty || f.name.toLowerCase().contains(query))
+        .toList();
+
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Pick from your basics',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Select the ingredients you have on hand.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        // Category color legend
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: AppTheme.space12),
+          TextField(
+            controller: _basicsSearch,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search_rounded),
+              hintText: 'Search your basics…',
+              isDense: true,
+            ),
           ),
+          const SizedBox(height: AppTheme.space12),
+          if (_basicsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppTheme.space16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_basics.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppTheme.space12),
+              child: Text(
+                'No basics yet. Add foods in the Foods tab first, or use '
+                'Describe mode.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: filtered.take(60).map((f) {
+                final selected = _selectedBasics.contains(f.id);
+                return FilterChip(
+                  label: Text(f.name),
+                  selected: selected,
+                  onSelected: (v) => setState(() {
+                    if (v) {
+                      _selectedBasics.add(f.id!);
+                    } else {
+                      _selectedBasics.remove(f.id!);
+                    }
+                  }),
+                );
+              }).toList(),
+            ),
+          if (_selectedBasics.isNotEmpty) ...[
+            const SizedBox(height: AppTheme.space8),
+            Text('${_selectedBasics.length} selected',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _describeInput() {
+    return Column(
+      children: [
+        SectionCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Text(
-                  'Category Colors:',
-                  style: TextStyle(
-                    fontSize: 14, 
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+              Text('Tell the AI what you want',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppTheme.space12),
+              TextField(
+                controller: _descCtrl,
+                onChanged: (_) => setState(() {}),
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText:
+                      'e.g. a quick high-protein dinner with chicken and rice',
                 ),
               ),
-              const SizedBox(height: 12),
-              // Table layout for better alignment
-              Table(
+            ],
+          ),
+        ),
+        const SizedBox(height: AppTheme.space12),
+        SectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  TableRow(
-                    children: [
-                      _buildCategoryLegend('P', 'Produce', Colors.green),
-                      _buildCategoryLegend('M', 'Protein', Colors.red),
-                      _buildCategoryLegend('G', 'Grain', Colors.orange),
-                    ],
-                  ),
-                  const TableRow(
-                    children: [
-                      SizedBox(height: 8),
-                      SizedBox(height: 8),
-                      SizedBox(height: 8),
-                    ],
-                  ),
-                  TableRow(
-                    children: [
-                      _buildCategoryLegend('D', 'Dairy', Colors.blue),
-                      _buildCategoryLegend('P', 'Pantry', Colors.purple),
-                      _buildCategoryLegend('S', 'Spice', Colors.brown),
-                    ],
-                  ),
+                  Icon(Icons.track_changes_rounded,
+                      size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: AppTheme.space8),
+                  Text('Macro target (optional)',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Aim the recipe at specific macros — great for closing a gap.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: AppTheme.space12),
+              Row(
+                children: [
+                  Expanded(child: _macroField(_calCtrl, 'kcal')),
+                  const SizedBox(width: AppTheme.space8),
+                  Expanded(child: _macroField(_proteinCtrl, 'Protein g')),
+                ],
+              ),
+              const SizedBox(height: AppTheme.space8),
+              Row(
+                children: [
+                  Expanded(child: _macroField(_carbCtrl, 'Carbs g')),
+                  const SizedBox(width: AppTheme.space8),
+                  Expanded(child: _macroField(_fatCtrl, 'Fat g')),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        // Ingredients list - not scrollable, just laid out normally
-        ...ingredients.map((ingredient) => Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: _getCategoryColor(ingredient['category']),
-              child: Text(
-                ingredient['category'][0].toUpperCase(),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            title: Text(ingredient['name']),
-            subtitle: Text('${ingredient['quantity']} • ${ingredient['freshness']} condition'),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: ingredient['confidence'] > 0.8 ? Colors.green : Colors.orange,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${(ingredient['confidence'] * 100).round()}%',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ),
-          ),
-        )),
-        
-        if (suggestions.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          const Text(
-            'AI Suggestions:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Based on your available ingredients, here are some cooking suggestions:',
-            style: TextStyle(
-              fontSize: 14,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Suggestions list - not scrollable, just laid out normally
-          ...suggestions.map((suggestion) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 6),
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    suggestion,
-                    style: const TextStyle(fontSize: 14, height: 1.4),
-                  ),
-                ),
-              ],
-            ),
-          )),
-        ],
-        
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () => setState(() => _currentStep = 1),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text('Continue to Questions'),
-          ),
-        ),
-        const SizedBox(height: 24), // Add some bottom padding
       ],
     );
   }
 
-  Widget _buildCategoryLegend(String letter, String category, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                letter,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              category,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.left,
-            ),
-          ),
-        ],
+  Widget _macroField(TextEditingController c, String label) {
+    return TextField(
+      controller: c,
+      keyboardType: TextInputType.number,
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Step 1 — preferences
 
   Widget _buildQuestionnaireStep() {
     final questions = SmartMealPlannerService.getCustomizationQuestions();
-    
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'A few quick questions to personalize your meal:',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: ListView(
-              children: questions.entries.map((entry) {
-                return _buildQuestionCard(entry.key, entry.value);
-              }).toList(),
+    final titles = {
+      'timeAvailable': 'How much time do you have?',
+      'cookingSkill': 'Cooking skill level?',
+      'mealTypePreference': 'What are you in the mood for?',
+      'cuisinePreference': 'Cuisine preference?',
+      'dietaryRestrictions': 'Dietary restrictions?',
+    };
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.pagePadding,
+              0,
+              AppTheme.pagePadding,
+              AppTheme.space16,
             ),
+            children: questions.entries
+                .map((e) => _questionCard(titles[e.key] ?? e.key, e.key, e.value))
+                .toList(),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _canProceedToGeneration() 
-                  ? () => setState(() => _currentStep = 2)
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.pagePadding,
+            0,
+            AppTheme.pagePadding,
+            AppTheme.space16,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _step = 0),
+                  child: const Text('Back'),
                 ),
-                disabledBackgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-                disabledForegroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              child: const Text('Generate My Meal'),
-            ),
+              const SizedBox(width: AppTheme.space12),
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  onPressed: _canGenerate()
+                      ? () => setState(() => _step = 2)
+                      : null,
+                  child: const Text('Generate recipe'),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildQuestionCard(String questionKey, List<String> options) {
-    final questionTitles = {
-      'timeAvailable': 'How much time do you have?',
-      'cookingSkill': 'What\'s your cooking skill level?',
-      'mealTypePreference': 'What type of meal are you in the mood for?',
-      'cuisinePreference': 'Any cuisine preference?',
-      'dietaryRestrictions': 'Dietary restrictions?',
-    };
-
-    List<String> filteredOptions = options;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget _questionCard(String title, String key, List<String> options) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTheme.space12),
+      child: SectionCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              questionTitles[questionKey] ?? questionKey,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: AppTheme.space8),
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: filteredOptions.map((option) {
-                final isSelected = _userPreferences[questionKey] == option;
-                return FilterChip(
-                  label: Text(
-                    option,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() {
-                      if (selected) {
-                        _userPreferences[questionKey] = option;
-                      } else {
-                        _userPreferences.remove(questionKey);
-                      }
-                    });
-                  },
-                  selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                  checkmarkColor: Theme.of(context).colorScheme.primary,
-                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                  side: BorderSide(
-                    color: isSelected 
-                        ? Theme.of(context).colorScheme.primary 
-                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                    width: 1,
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              children: options.map((o) {
+                final selected = _userPreferences[key] == o;
+                return ChoiceChip(
+                  label: Text(o),
+                  selected: selected,
+                  onSelected: (v) => setState(() {
+                    if (v) {
+                      _userPreferences[key] = o;
+                    } else {
+                      _userPreferences.remove(key);
+                    }
+                  }),
                 );
               }).toList(),
             ),
@@ -560,394 +611,350 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     );
   }
 
-  Widget _buildRecipeGenerationStep() {
-    if (_isGenerating) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Creating your perfect meal',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
+  bool _canGenerate() =>
+      _userPreferences.containsKey('timeAvailable') &&
+      _userPreferences.containsKey('cookingSkill');
+
+  // ---------------------------------------------------------------------------
+  // Step 2 — recipe
+
+  Widget _buildRecipeStep() {
+    if (_mealRecommendation != null) return _buildRecipeDisplay();
+    if (!_isGenerating && !_generateRequested) {
+      _generateRequested = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _generate());
+    }
+    return _centeredLoader('Creating your recipe…',
+        'Balancing your inputs, preferences and targets.');
+  }
+
+  Widget _centeredLoader(String title, String? subtitle) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: AppTheme.space16),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.space32,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Our AI is analyzing: your ingredients, preferences and much more...',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
-        ),
-      );
-    }
-
-    if (_mealRecommendation == null) {
-      // Auto-start generation when step loads
-      WidgetsBinding.instance.addPostFrameCallback((_) => _generateMealRecommendation());
-      
-      return Center(
-        child: CircularProgressIndicator(
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      );
-    }
-
-    return _buildRecipeDisplay();
+        ],
+      ),
+    );
   }
 
   Widget _buildRecipeDisplay() {
-    if (_mealRecommendation == null) return const SizedBox();
-
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final recipe = _mealRecommendation!;
-    final nutrition = recipe['nutrition'];
-    
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Recipe title with better text wrapping
-          SizedBox(
-            width: double.infinity,
-            child: Text(
-              recipe['recipeName'],
-              style: TextStyle(
-                fontSize: 24, 
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-                height: 1.2,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
+    final nutrition = recipe['nutrition'] as Map<String, dynamic>;
+    final servings = (recipe['servings'] as num?)?.toInt() ?? 1;
+    final target = _targetMacros();
+    final matchesTarget = target != null &&
+        (target['protein'] ?? 0) > 0 &&
+        (nutrition['protein'] as num) >= (target['protein']! * 0.8);
+
+    double perServing(String k) {
+      final v = (nutrition[k] as num).toDouble();
+      return servings > 0 ? v / servings : v;
+    }
+
+    final totalMinutes = ((recipe['prepTime'] ?? 0) as num).toInt() +
+        ((recipe['cookTime'] ?? 0) as num).toInt();
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.pagePadding,
+              0,
+              AppTheme.pagePadding,
+              AppTheme.space16,
             ),
-          ),
-          const SizedBox(height: 12),
-          // Description with better text wrapping
-          SizedBox(
-            width: double.infinity,
-            child: Text(
-              recipe['description'],
-              style: TextStyle(
-                fontSize: 14, 
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Recipe info chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildInfoChip(Icons.schedule, '${recipe['prepTime'] + recipe['cookTime']} min'),
-                const SizedBox(width: 8),
-                _buildInfoChip(Icons.restaurant, '${recipe['servings']} servings'),
-                const SizedBox(width: 8),
-                _buildInfoChip(
-                  Icons.signal_cellular_alt, 
-                  _capitalizeFirst(recipe['difficulty'].toString()),
-                  color: _getDifficultyColor(recipe['difficulty'].toString()),
+            children: [
+              Text(
+                recipe['recipeName']?.toString() ?? 'Recipe',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Nutrition info
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              const SizedBox(height: AppTheme.space8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    'Nutrition (Total Recipe)', 
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildNutritionItem('Calories', '${nutrition['calories']}'),
-                      _buildNutritionItem('Protein', '${nutrition['protein']}g'),
-                      _buildNutritionItem('Carbs', '${nutrition['carbs']}g'),
-                      _buildNutritionItem('Fat', '${nutrition['fat']}g'),
-                    ],
-                  ),
+                  _infoChip(Icons.schedule_rounded, '$totalMinutes min'),
+                  _infoChip(Icons.restaurant_rounded, '$servings servings'),
+                  _infoChip(Icons.signal_cellular_alt_rounded,
+                      _cap(recipe['difficulty']?.toString() ?? 'easy')),
+                  if (matchesTarget)
+                    _infoChip(Icons.check_circle_rounded, 'Matches target',
+                        color: scheme.primary),
                 ],
               ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Why this recipe explanation with better text wrapping
-          if (recipe['whyThisRecipe'] != null) ...[
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+              const SizedBox(height: AppTheme.space16),
+              // Calorie hero + macro pills — the scannable summary.
+              SectionCard(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
                       children: [
-                        Icon(
-                          Icons.lightbulb, 
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Why This Recipe?', 
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                        Text(
+                          fmtNum(perServing('calories')),
+                          style: theme.textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.primary,
                           ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('kcal / serving',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            )),
+                      ],
+                    ),
+                    const SizedBox(height: AppTheme.space16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _macroPill('Protein',
+                              perServing('protein'), scheme.primary),
+                        ),
+                        const SizedBox(width: AppTheme.space8),
+                        Expanded(
+                          child: _macroPill(
+                              'Carbs', perServing('carbs'), scheme.tertiary),
+                        ),
+                        const SizedBox(width: AppTheme.space8),
+                        Expanded(
+                          child: _macroPill(
+                              'Fat', perServing('fat'), scheme.secondary),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppTheme.space8),
                     Text(
-                      recipe['whyThisRecipe'],
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        height: 1.4,
+                      'Whole recipe: ${fmtNum((nutrition['calories'] as num).toDouble())} kcal · '
+                      '${fmtNum((nutrition['protein'] as num).toDouble())}P · '
+                      '${fmtNum((nutrition['carbs'] as num).toDouble())}C · '
+                      '${fmtNum((nutrition['fat'] as num).toDouble())}F',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
                       ),
-                      maxLines: 6,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          
-          const Spacer(),
-          
+              if (recipe['description'] != null) ...[
+                const SizedBox(height: AppTheme.space12),
+                Text(
+                  recipe['description'].toString(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              if (recipe['whyThisRecipe'] != null) ...[
+                const SizedBox(height: AppTheme.space12),
+                _ExpandableNote(text: recipe['whyThisRecipe'].toString()),
+              ],
+            ],
+          ),
+        ),
+        _recipeActionBar(),
+      ],
+    );
+  }
+
+  Widget _recipeActionBar() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.pagePadding,
+        AppTheme.space12,
+        AppTheme.pagePadding,
+        AppTheme.space12,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Row(
             children: [
               Expanded(
-                child: ElevatedButton(
-                  onPressed: () => setState(() => _currentStep = 0),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: const Text('Start Over'),
+                  onPressed: _isGenerating
+                      ? null
+                      : () => setState(() {
+                            _mealRecommendation = null;
+                            _generateRequested = false;
+                          }),
+                  child: const Text('Regenerate', maxLines: 1),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppTheme.space12),
               Expanded(
-                child: ElevatedButton(
-                  onPressed: () => setState(() => _currentStep = 3),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  child: const Text('Save Recipe'),
+                  onPressed: _isSaving ? null : _saveRecipe,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bookmark_add_outlined, size: 18),
+                  label: const Text('Save', maxLines: 1),
                 ),
               ),
             ],
+          ),
+          TextButton(
+            onPressed: () => setState(() {
+              _mealRecommendation = null;
+              _generateRequested = false;
+              _step = 0;
+            }),
+            child: const Text('Start over'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSaveRecipeStep() {
-    if (_isSaving) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Saving your recipe...',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_generatedRecipe == null) {
-      // Auto-save when step loads
-      WidgetsBinding.instance.addPostFrameCallback((_) => _saveRecipe());
-      
-      return Center(
-        child: CircularProgressIndicator(
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
+  Widget _macroPill(String label, double value, Color color) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppTheme.space12,
+        horizontal: AppTheme.space8,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.check_circle,
-            size: 80,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 24),
           Text(
-            'Recipe Saved Successfully!',
-            style: TextStyle(
-              fontSize: 24, 
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
+            '${fmtNum(value)}g',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 2),
           Text(
-            'Your "${_generatedRecipe!.name}" recipe has been saved to your custom recipes.',
-            style: TextStyle(
-              fontSize: 16,
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-          Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => CustomRecipeDetailScreen(recipe: _generatedRecipe!),
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('View Full Recipe'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _navigateToCustomRecipes,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('View All Recipes'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _resetAndStartOver,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.1),
-                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Create Another Recipe'),
-                ),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String text, {Color? color}) {
+  Widget _infoChip(IconData icon, String text, {Color? color}) {
+    final scheme = Theme.of(context).colorScheme;
+    final c = color ?? scheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(0.3),
-        ),
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon, 
-            size: 16, 
-            color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 4),
+          Icon(icon, size: 15, color: c),
+          const SizedBox(width: 5),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: c)),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step 3 — saved
+
+  Widget _buildSavedStep() {
+    if (_isSaving || _generatedRecipe == null) {
+      return _centeredLoader('Saving…', null);
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(AppTheme.pagePadding),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle_rounded, size: 56, color: scheme.primary),
+          const SizedBox(height: AppTheme.space12),
+          Text('Recipe saved',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              )),
+          const SizedBox(height: 4),
           Text(
-            text, 
-            style: TextStyle(
-              color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: color != null ? FontWeight.w600 : FontWeight.normal,
+            '"${_generatedRecipe!.name}" is in your recipes.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppTheme.space20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      CustomRecipeDetailScreen(recipe: _generatedRecipe!),
+                ),
+              ),
+              child: const Text('View full recipe'),
+            ),
+          ),
+          const SizedBox(height: AppTheme.space8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _resetAndStartOver,
+              child: const Text('Create another'),
             ),
           ),
         ],
@@ -955,26 +962,22 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     );
   }
 
-  Widget _buildNutritionItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value, 
-          style: TextStyle(
-            fontWeight: FontWeight.bold, 
-            fontSize: 16,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        ),
-        Text(
-          label, 
-          style: TextStyle(
-            fontSize: 12, 
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
+  // ---------------------------------------------------------------------------
+  // Logic
+
+  Future<void> _loadBasics() async {
+    setState(() => _basicsLoading = true);
+    try {
+      final foods = await _foodService.getSimpleFoods();
+      if (mounted) {
+        setState(() {
+          _basics = foods;
+          _basicsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _basicsLoading = false);
+    }
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -985,125 +988,139 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
         maxHeight: 1024,
         imageQuality: 85,
       );
-      
       if (image != null) {
         setState(() {
           _scannedImage = File(image.path);
           _isScanning = true;
         });
-        
-        await _scanIngredients();
+        final result =
+            await IngredientScannerService.scanIngredients(_scannedImage!);
+        if (mounted) {
+          setState(() {
+            _scannedIngredients = result;
+            _isScanning = false;
+          });
+        }
       }
     } catch (e) {
-      _showErrorSnackBar('Failed to pick image: $e');
+      if (mounted) setState(() => _isScanning = false);
+      _showError('Failed to scan image: $e');
     }
   }
 
-  Future<void> _scanIngredients() async {
-    if (_scannedImage == null) return;
-    
-    try {
-      final result = await IngredientScannerService.scanIngredients(_scannedImage!);
-      
-      setState(() {
-        _scannedIngredients = result;
-        _isScanning = false;
-      });
-    } catch (e) {
-      setState(() => _isScanning = false);
-      _showErrorSnackBar('Failed to scan ingredients: $e');
+  Map<String, double>? _targetMacros() {
+    double? parse(TextEditingController c) {
+      final v = double.tryParse(c.text.trim());
+      return (v != null && v > 0) ? v : null;
     }
+
+    final cal = parse(_calCtrl);
+    final p = parse(_proteinCtrl);
+    final carb = parse(_carbCtrl);
+    final fat = parse(_fatCtrl);
+    if (cal == null && p == null && carb == null && fat == null) return null;
+    return {
+      if (cal != null) 'calories': cal,
+      if (p != null) 'protein': p,
+      if (carb != null) 'carbs': carb,
+      if (fat != null) 'fat': fat,
+    };
   }
 
-  Future<void> _generateMealRecommendation() async {
-    if (_scannedIngredients == null) return;
-    
+  Future<void> _generate() async {
     setState(() => _isGenerating = true);
-    
     try {
-      final ingredients = (_scannedIngredients!['ingredients'] as List)
-          .cast<Map<String, dynamic>>();
-      
+      List<Map<String, dynamic>>? ingredients;
+      List<String>? pantry;
+      String? freeText;
+
+      switch (_mode) {
+        case RecipeInputMode.photo:
+          ingredients = (_scannedIngredients?['ingredients'] as List?)
+              ?.cast<Map<String, dynamic>>();
+          break;
+        case RecipeInputMode.inventory:
+          pantry = _basics
+              .where((f) => _selectedBasics.contains(f.id))
+              .map((f) => f.name)
+              .toList();
+          break;
+        case RecipeInputMode.describe:
+          freeText = _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim();
+          break;
+      }
+
       final result = await SmartMealPlannerService.generateMealRecommendation(
         availableIngredients: ingredients,
+        pantryItems: pantry,
+        freeText: freeText,
+        targetMacros: _targetMacros(),
         userPreferences: _userPreferences,
       );
-      
-      setState(() {
-        _mealRecommendation = result;
-        _isGenerating = false;
-      });
+
+      if (result != null && mounted) {
+        setState(() {
+          _mealRecommendation = result;
+          _isGenerating = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _generateRequested = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isGenerating = false);
-      
-      // Show user-friendly error and return to start
-      AlertHelper.showInfoAlert(
-        context,
-        title: 'Recipe Generation Failed',
-        message: 'This recipe cannot be created with the chosen settings and given ingredients. Please try different ingredients or preferences.',
-        actionButtonText: 'Start Over',
-        onActionPressed: () {
-          Navigator.of(context).pop(); // Close the alert
-          setState(() {
-            _scannedImage = null;
-            _scannedIngredients = null;
-            _userPreferences.clear();
-            _mealRecommendation = null;
-            _generatedRecipe = null;
-            _currentStep = 0;
-          });
-        },
-      );
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _generateRequested = false;
+          _mealRecommendation = null;
+        });
+        AlertHelper.showInfoAlert(
+          context,
+          title: 'Could not create recipe',
+          message:
+              'The AI could not build a recipe from these inputs. Try adjusting '
+              'your ingredients, description, or preferences.',
+          actionButtonText: 'Back',
+          onActionPressed: () {
+            Navigator.of(context).pop();
+            setState(() => _step = 0);
+          },
+        );
+      }
     }
   }
 
   Future<void> _saveRecipe() async {
     if (_mealRecommendation == null) return;
-    
-    setState(() => _isSaving = true);
-    
+    setState(() {
+      _isSaving = true;
+      _step = 3;
+    });
     try {
-      final aiPrompt = 'Ingredients: ${(_scannedIngredients!['ingredients'] as List).map((i) => i['name']).join(', ')}. Preferences: ${_userPreferences.toString()}';
-      
+      final aiPrompt = 'Mode: ${_mode.name}. '
+          'Preferences: ${_userPreferences.toString()}';
       final customRecipe = SmartMealPlannerService.convertToCustomRecipe(
         _mealRecommendation!,
         aiPrompt,
       );
-      
       final recipeId = await CustomRecipeService.saveCustomRecipe(customRecipe);
-      final savedRecipe = await CustomRecipeService.getRecipeById(recipeId);
-      
-      setState(() {
-        _generatedRecipe = savedRecipe;
-        _isSaving = false;
-      });
+      final saved = await CustomRecipeService.getRecipeById(recipeId);
+      if (mounted) {
+        setState(() {
+          _generatedRecipe = saved;
+          _isSaving = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isSaving = false);
-      _showErrorSnackBar('Failed to save recipe: $e');
-    }
-  }
-
-  bool _canProceedToGeneration() {
-    final requiredQuestions = ['timeAvailable', 'cookingSkill'];
-    return requiredQuestions.every((q) => _userPreferences.containsKey(q));
-  }
-
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'produce':
-        return Colors.green;
-      case 'protein':
-        return Colors.red;
-      case 'grain':
-        return Colors.orange;
-      case 'dairy':
-        return Colors.blue;
-      case 'pantry':
-        return Colors.purple;
-      case 'spice':
-        return Colors.brown;
-      default:
-        return Colors.grey;
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _step = 2;
+        });
+        _showError('Failed to save recipe: $e');
+      }
     }
   }
 
@@ -1111,44 +1128,96 @@ class _AiMealPlannerScreenState extends State<AiMealPlannerScreen> {
     setState(() {
       _scannedImage = null;
       _scannedIngredients = null;
+      _selectedBasics.clear();
+      _descCtrl.clear();
       _userPreferences.clear();
       _mealRecommendation = null;
       _generatedRecipe = null;
-      _currentStep = 0;
+      _generateRequested = false;
+      _step = 0;
     });
   }
 
   void _navigateToCustomRecipes() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const CustomRecipesScreen(),
+      MaterialPageRoute(builder: (_) => const CustomRecipesScreen()),
+    );
+  }
+
+  void _showError(String message) {
+    AlertHelper.showErrorAlert(context, title: 'Error', message: message);
+  }
+
+  String _cap(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
+}
+
+/// A "Why this recipe" note that stays compact (3 lines) with a Read more toggle
+/// so the result screen doesn't become a wall of text.
+class _ExpandableNote extends StatefulWidget {
+  const _ExpandableNote({required this.text});
+  final String text;
+
+  @override
+  State<_ExpandableNote> createState() => _ExpandableNoteState();
+}
+
+class _ExpandableNoteState extends State<_ExpandableNote> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppTheme.space12),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lightbulb_outline_rounded,
+                  size: 18, color: scheme.primary),
+              const SizedBox(width: AppTheme.space8),
+              Text('Why this recipe',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  )),
+            ],
+          ),
+          const SizedBox(height: AppTheme.space8),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            alignment: Alignment.topCenter,
+            child: Text(
+              widget.text,
+              maxLines: _expanded ? null : 3,
+              overflow: _expanded ? null : TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
+            ),
+          ),
+          if (widget.text.length > 140)
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _expanded ? 'Show less' : 'Read more',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
-  }
-
-  void _showErrorSnackBar(String message) {
-    AlertHelper.showErrorAlert(
-      context,
-      title: 'Error',
-      message: message,
-    );
-  }
-
-  String _capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1).toLowerCase();
-  }
-
-  Color _getDifficultyColor(String difficulty) {
-    switch (difficulty.toLowerCase()) {
-      case 'easy':
-        return Colors.green;
-      case 'medium':
-        return Colors.orange;
-      case 'hard':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 }
