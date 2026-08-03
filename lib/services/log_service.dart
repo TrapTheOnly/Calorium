@@ -68,7 +68,7 @@ class LogService {
       final rows = await db.rawQuery(
         '''
         SELECT f.name, f.calories, f.fat, f.carbs, f.protein,
-               l.amount, l.portions, l.loggedAt
+               l.amount, l.portions, l.loggedAt, l.syncedHealth
         FROM logs l JOIN foods f ON f.id = l.foodId
         WHERE l.id = ?
       ''',
@@ -84,12 +84,15 @@ class LogService {
       final factor = amount / 100.0;
       if (factor <= 0) return;
 
+      // Already mirrored (e.g. re-entrancy)? Don't write it again.
+      if ((r['syncedHealth'] as int? ?? 0) == 1) return;
+
       final loggedAtMs = r['loggedAt'] as int?;
       final time = loggedAtMs != null
           ? DateTime.fromMillisecondsSinceEpoch(loggedAtMs)
           : DateTime.now();
 
-      await HealthService.instance.writeMeal(
+      final ok = await HealthService.instance.writeMeal(
         name: (r['name'] as String?) ?? 'Meal',
         calories: ((r['calories'] as num?)?.toDouble() ?? 0) * factor,
         protein: ((r['protein'] as num?)?.toDouble() ?? 0) * factor,
@@ -97,6 +100,15 @@ class LogService {
         fat: ((r['fat'] as num?)?.toDouble() ?? 0) * factor,
         time: time,
       );
+      // Remember success so a later resync doesn't create a duplicate record.
+      if (ok) {
+        await db.update(
+          'logs',
+          {'syncedHealth': 1},
+          where: 'id = ?',
+          whereArgs: [logId],
+        );
+      }
     } catch (_) {
       // Never let Health Connect issues break logging.
     }
@@ -130,12 +142,15 @@ class LogService {
     final cutoffStr =
         '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
 
+    // Only meals we haven't already mirrored — meals logged while write access
+    // was on are synced at insertion time, so re-writing them here would create
+    // duplicate Health Connect records and inflate downstream totals.
     final rows = await db.rawQuery(
       '''
       SELECT l.id, f.name, f.calories, f.fat, f.carbs, f.protein,
              l.amount, l.portions, l.loggedAt, l.date
       FROM logs l JOIN foods f ON f.id = l.foodId
-      WHERE l.date >= ?
+      WHERE l.date >= ? AND (l.syncedHealth IS NULL OR l.syncedHealth = 0)
       ORDER BY l.date ASC, l.id ASC
     ''',
       [cutoffStr],
@@ -166,8 +181,51 @@ class LogService {
         fat: ((r['fat'] as num?)?.toDouble() ?? 0) * factor,
         time: time,
       );
-      if (ok) written++;
+      if (ok) {
+        written++;
+        await db.update(
+          'logs',
+          {'syncedHealth': 1},
+          where: 'id = ?',
+          whereArgs: [r['id']],
+        );
+      }
     }
     return written;
+  }
+
+  /// The user's current logging streak: the number of consecutive days, ending
+  /// today (or yesterday if today isn't logged yet), that have at least one log.
+  ///
+  /// Unlike a fixed 7-day window, this walks back through every logged day, so
+  /// streaks longer than a week are reported correctly.
+  Future<int> getCurrentStreak() async {
+    final db = await DatabaseService.instance.database;
+    final rows = await db.rawQuery(
+      "SELECT DISTINCT date FROM logs WHERE date IS NOT NULL AND date != ''",
+    );
+    if (rows.isEmpty) return 0;
+
+    final loggedDays = <String>{for (final r in rows) r['date'] as String};
+
+    String key(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    final now = DateTime.now();
+    var cursor = DateTime(now.year, now.month, now.day);
+    // If today hasn't been logged yet, anchor the streak at yesterday so an
+    // ongoing streak isn't reported as 0 for most of the day.
+    if (!loggedDays.contains(key(cursor))) {
+      cursor = cursor.subtract(const Duration(days: 1));
+      if (!loggedDays.contains(key(cursor))) return 0;
+    }
+
+    var streak = 0;
+    while (loggedDays.contains(key(cursor))) {
+      streak++;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+    return streak;
   }
 }
