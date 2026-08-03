@@ -51,12 +51,19 @@ dependencies:
   path_provider: ^2.1.1
   flutter_local_notifications: ^17.2.3
   timezone: ^0.9.4
+  flutter_timezone: ^3.0.1
   sqflite: ^2.3.0
   path: ^1.8.3
   intl: ^0.18.1
   provider: ^6.0.5
   health: ^13.0.1
   permission_handler: ^11.3.1
+  # Android "share to app" recipe import (Instagram / YouTube links)
+  receive_sharing_intent: ^1.8.1
+  youtube_explode_dart: ^2.3.4
+  video_player: ^2.9.2
+  chewie: ^1.8.5
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
