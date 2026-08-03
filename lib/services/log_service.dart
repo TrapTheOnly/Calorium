@@ -132,8 +132,20 @@ class LogService {
   /// Backfills past logged meals to Health Connect (for apps that already had
   /// history before write-permission was granted). Returns how many meals were
   /// successfully written. Requests write permission if missing.
-  Future<int> resyncMealsToHealthConnect({int lookbackDays = 90}) async {
-    final granted =
+  ///
+  /// [alreadyHadWrite] must reflect write access *before* any prompt in this
+  /// flow. Callers that request permission first should pass the pre-prompt
+  /// value so legacy NULL rows are reconciled instead of duplicated.
+  Future<int> resyncMealsToHealthConnect({
+    int lookbackDays = 90,
+    bool? alreadyHadWrite,
+  }) async {
+    // Capture whether write access was already held *before* we prompt. Legacy
+    // (NULL) rows from pre-v9 builds were mirrored at insert time whenever
+    // write access was on; if it still is, mark them synced without rewriting.
+    final hadWrite = alreadyHadWrite ??
+        await HealthService.instance.hasNutritionWritePermission();
+    final granted = hadWrite ||
         await HealthService.instance.requestNutritionWritePermission();
     if (!granted) return 0;
 
@@ -142,13 +154,12 @@ class LogService {
     final cutoffStr =
         '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
 
-    // Only meals we haven't already mirrored — meals logged while write access
-    // was on are synced at insertion time, so re-writing them here would create
-    // duplicate Health Connect records and inflate downstream totals.
+    // Known-unsynced (0) always need a write. Legacy/unknown (NULL) are
+    // included so we can either reconcile or backfill them below.
     final rows = await db.rawQuery(
       '''
       SELECT l.id, f.name, f.calories, f.fat, f.carbs, f.protein,
-             l.amount, l.portions, l.loggedAt, l.date
+             l.amount, l.portions, l.loggedAt, l.date, l.syncedHealth
       FROM logs l JOIN foods f ON f.id = l.foodId
       WHERE l.date >= ? AND (l.syncedHealth IS NULL OR l.syncedHealth = 0)
       ORDER BY l.date ASC, l.id ASC
@@ -158,6 +169,22 @@ class LogService {
 
     var written = 0;
     for (final r in rows) {
+      final logId = r['id'];
+      final syncedHealth = r['syncedHealth'] as int?;
+
+      // Legacy row + write access was already on before this resync → the
+      // pre-v9 insert path almost certainly mirrored it already. Mark synced
+      // and skip the write so we don't duplicate Health Connect totals.
+      if (syncedHealth == null && hadWrite) {
+        await db.update(
+          'logs',
+          {'syncedHealth': 1},
+          where: 'id = ?',
+          whereArgs: [logId],
+        );
+        continue;
+      }
+
       // See _writeMealToHealthConnect: nutrition is perValue * amount / 100.
       // `portions` is display metadata only and must not be applied here.
       final amount = (r['amount'] as num?)?.toDouble() ?? 0;
@@ -187,7 +214,7 @@ class LogService {
           'logs',
           {'syncedHealth': 1},
           where: 'id = ?',
-          whereArgs: [r['id']],
+          whereArgs: [logId],
         );
       }
     }

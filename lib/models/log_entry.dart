@@ -41,6 +41,9 @@ class LogEntry {
       'date': date,
       'loggedAt': loggedAt.millisecondsSinceEpoch,
       'portions': portions,
+      // Explicit 0: not yet mirrored. Legacy pre-v9 rows are NULL instead,
+      // which resync reconciles separately from known-unsynced inserts.
+      'syncedHealth': 0,
     };
   }
 

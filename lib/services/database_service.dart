@@ -227,11 +227,15 @@ class DatabaseService {
     }
 
     if (oldVersion <= 8 && newVersion >= 9) {
-      // Marks which logs have already been mirrored to Health Connect so that
-      // re-syncing (and re-inserting) never writes the same meal twice.
-      await db.execute(
-        'ALTER TABLE logs ADD COLUMN syncedHealth INTEGER DEFAULT 0',
-      );
+      // Per-row mirror marker for Health Connect. Intentionally no DEFAULT so
+      // existing rows stay NULL (= legacy / unknown) rather than unsynced.
+      // Pre-v9 builds already called _writeMealToHealthConnect on insert when
+      // write access was held; classifying those as 0 would make the first
+      // resync rewrite up to 90 days of meals and duplicate HC totals.
+      // LogService.resyncMealsToHealthConnect reconciles NULL rows: if write
+      // access was already granted they are marked synced without rewriting;
+      // otherwise they are backfilled. New inserts set syncedHealth=0 explicitly.
+      await db.execute('ALTER TABLE logs ADD COLUMN syncedHealth INTEGER');
     }
   }
 }

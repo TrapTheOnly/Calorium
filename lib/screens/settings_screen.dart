@@ -1257,7 +1257,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _resyncMealsToHealth() async {
     try {
       _showSnackBar('Requesting permission & syncing…', Colors.blue);
-      final granted =
+      // Capture write access *before* prompting so resync can reconcile
+      // legacy (pre-v9) rows that were already mirrored at insert time.
+      final alreadyHadWrite =
+          await HealthService.instance.hasNutritionWritePermission();
+      final granted = alreadyHadWrite ||
           await HealthService.instance.requestNutritionWritePermission();
       if (!granted) {
         if (!mounted) return;
@@ -1269,7 +1273,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
         return;
       }
-      final count = await LogService().resyncMealsToHealthConnect();
+      final count = await LogService().resyncMealsToHealthConnect(
+        alreadyHadWrite: alreadyHadWrite,
+      );
       if (!mounted) return;
       if (count == 0) {
         _showSnackBar('No meals to sync in the last 90 days.', Colors.orange);
