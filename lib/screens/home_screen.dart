@@ -3,21 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/health_data.dart';
+import '../models/log_entry.dart';
 import '../services/log_service.dart';
 import '../services/fasting_service.dart';
 import '../models/fasting_settings.dart';
 import '../services/scheduler_service.dart';
+import '../utils/app_layout.dart';
+import '../utils/num_format.dart';
 import '../utils/health_permission_provider.dart';
 import '../widgets/health_data_card.dart';
-import '../widgets/custom_alert.dart';
-import '../widgets/add_food_options_dialog.dart';
+import '../widgets/add_entry_speed_dial.dart';
 import '../widgets/fasting_overview_card.dart';
+import '../widgets/ui_kit.dart';
 import 'date_picker_screen.dart';
-import 'inventory_screen.dart';
 import 'ai_meal_planner_screen.dart';
-import 'weekly_analysis_screen.dart';
 import 'settings_screen.dart';
 import 'daily_log_screen.dart';
+import 'log_entry_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,10 +30,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   double todayCal = 0;
-  bool _hasSevenDaysData = false;
+  List<LogEntry> _todayEntries = [];
+  bool _loadingEntries = true;
   HealthData _healthData = HealthData.empty();
   bool _isLoadingHealth = true;
   bool _isLoadingFasting = true;
+  bool _healthBannerDismissed = false;
   FastingSettings? _fastingSettings;
   FastingStatus? _fastingStatus;
   Timer? _fastingTimer;
@@ -43,23 +47,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTodayCalories();
-    _checkSevenDaysData();
+    _loadTodayData();
     _initializeHealthData();
     _loadFastingSettings();
   }
 
-  Future<void> _loadTodayCalories() async {
+  Future<void> _loadTodayData() async {
     final logService = LogService();
     final entries = await logService.getLogEntriesByDate(todayDate);
 
     double sum = 0;
     for (var entry in entries) {
-      sum += entry.calories! * entry.amount / 100;
+      sum += (entry.calories ?? 0) * entry.amount / 100;
     }
 
+    if (!mounted) return;
     setState(() {
       todayCal = sum;
+      _todayEntries = entries;
+      _loadingEntries = false;
     });
   }
 
@@ -148,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (context) => const SettingsScreen()),
     ).then((_) {
       _loadFastingSettings();
-      _loadTodayCalories();
+      _loadTodayData();
     });
   }
 
@@ -161,48 +167,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return settings.enabled && status.enabled;
   }
 
-  Widget _buildFastingCard() {
-    final settings = _fastingSettings!;
-    final status = _fastingStatus!;
-
-    return FastingOverviewCard(
-      status: status,
-      settings: settings,
-      streakDays: _fastingStreakDays,
-      onConfigure: _openSettings,
-      timeRemaining: _timeUntilChange,
-    );
-  }
-
-  Future<void> _checkSevenDaysData() async {
-    final logService = LogService();
-    int daysWithData = 0;
-
-    // Check the past 7 days
-    for (int i = 0; i < 7; i++) {
-      final date = DateTime.now().subtract(Duration(days: i));
-      final dateString = DateFormat('yyyy-MM-dd').format(date);
-      final entries = await logService.getLogEntriesByDate(dateString);
-
-      if (entries.isNotEmpty) {
-        daysWithData++;
-      }
-    }
-
-    setState(() {
-      _hasSevenDaysData = daysWithData >= 7;
-    });
-  }
-
   Future<void> _initializeHealthData() async {
     final healthProvider = Provider.of<HealthPermissionProvider>(
       context,
       listen: false,
     );
 
-    // Wait for provider to initialize if it hasn't already
     if (!healthProvider.isInitialized) {
-      // Listen for initialization completion
       healthProvider.addListener(_onHealthProviderChange);
       return;
     }
@@ -210,19 +181,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (healthProvider.hasPermissions) {
       try {
         final healthData = await healthProvider.getTodayHealthData();
+        if (!mounted) return;
         setState(() {
           _healthData = healthData;
           _isLoadingHealth = false;
         });
-      } catch (e) {
-        setState(() {
-          _isLoadingHealth = false;
-        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _isLoadingHealth = false);
       }
     } else {
-      setState(() {
-        _isLoadingHealth = false;
-      });
+      if (!mounted) return;
+      setState(() => _isLoadingHealth = false);
     }
   }
 
@@ -248,9 +218,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final granted = await healthProvider.requestPermissions();
       if (granted) {
         final healthData = await healthProvider.getTodayHealthData();
-        setState(() {
-          _healthData = healthData;
-        });
+        if (!mounted) return;
+        setState(() => _healthData = healthData);
       }
     } catch (e) {
       if (mounted) {
@@ -264,253 +233,292 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showQuickAddOptions() {
-    AddFoodOptionsDialog.show(
+  void _openDailyLog() {
+    Navigator.push(
       context,
-      date: todayDate,
-      title: 'Quick Add to Today',
-      subtitle: 'Choose how you want to add food to today\'s log',
-      onComplete: _loadTodayCalories,
-    );
+      MaterialPageRoute(builder: (context) => DailyLogScreen(date: todayDate)),
+    ).then((_) => _loadTodayData());
+  }
+
+  void _editEntry(LogEntry entry) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LogEntryScreen(
+          food: {
+            'id': entry.foodId,
+            'name': entry.foodName ?? 'Food',
+            'calories': entry.calories ?? 0,
+            'fat': entry.fat ?? 0,
+            'carbs': entry.carbs ?? 0,
+            'protein': entry.protein ?? 0,
+            'defaultPortionSize': entry.defaultPortionSize ?? 100.0,
+            'portionDescription': entry.portionDescription ?? '100g',
+            'unit': entry.unit ?? 'g',
+            'hasServing': entry.hasServing ?? false,
+          },
+          date: todayDate,
+          editMode: true,
+          logId: entry.id,
+          initialAmount: entry.amount,
+        ),
+      ),
+    ).then((_) => _loadTodayData());
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Consumer<HealthPermissionProvider>(
       builder: (context, healthProvider, child) {
         return Scaffold(
-          backgroundColor: Theme.of(context).colorScheme.surface,
+          appBar: PageAppBar(
+            title: 'Today',
+            subtitle: prettyToday,
+            automaticallyImplyLeading: false,
+          ),
+          floatingActionButton: AddEntrySpeedDial(
+            date: todayDate,
+            onComplete: _loadTodayData,
+          ),
           body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            top: false,
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await _loadTodayData();
+                await _loadFastingSettings();
+                await _initializeHealthData();
+              },
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppLayout.pagePadding,
+                  AppLayout.sectionGap,
+                  AppLayout.pagePadding,
+                  96,
+                ),
                 children: [
-                  const SizedBox(height: 24),
-                  Text(
-                    'Calorium',
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  // Today Card
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DailyLogScreen(date: todayDate),
-                        ),
-                      ).then((_) => _loadTodayCalories());
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.only(right: 12),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  right: BorderSide(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary.withOpacity(0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                              ),
+                  // Compact today summary
+                  Material(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppLayout.radius),
+                    child: InkWell(
+                      onTap: _openDailyLog,
+                      borderRadius: BorderRadius.circular(AppLayout.radius),
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppLayout.cardPadding),
+                        child: Row(
+                          children: [
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     "Today's Log",
                                     style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).colorScheme.onPrimaryContainer,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: scheme.onPrimaryContainer,
                                     ),
                                   ),
+                                  const SizedBox(height: 2),
                                   Text(
-                                    prettyToday,
+                                    _todayEntries.isEmpty
+                                        ? 'No meals logged yet'
+                                        : '${_todayEntries.length} '
+                                            '${_todayEntries.length == 1 ? 'entry' : 'entries'}',
                                     style: TextStyle(
-                                      fontSize: 15,
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).colorScheme.onPrimaryContainer,
+                                      fontSize: 13,
+                                      color: scheme.onPrimaryContainer
+                                          .withOpacity(0.8),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ),
-                          SizedBox(
-                            width: 80,
-                            child: Column(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
                                   todayCal.toStringAsFixed(0),
                                   style: TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimaryContainer,
+                                    color: scheme.onPrimaryContainer,
                                   ),
                                 ),
                                 Text(
                                   'kcal',
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    color:
-                                        Theme.of(
-                                          context,
-                                        ).colorScheme.onPrimaryContainer,
+                                    fontSize: 12,
+                                    color: scheme.onPrimaryContainer
+                                        .withOpacity(0.8),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right,
+                              color: scheme.onPrimaryContainer.withOpacity(0.7),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppLayout.sectionGap),
 
                   if (_shouldShowFastingCard) ...[
-                    _buildFastingCard(),
-                    const SizedBox(height: 24),
+                    FastingOverviewCard(
+                      status: _fastingStatus!,
+                      settings: _fastingSettings!,
+                      streakDays: _fastingStreakDays,
+                      onConfigure: _openSettings,
+                      timeRemaining: _timeUntilChange,
+                    ),
+                    const SizedBox(height: AppLayout.sectionGap),
                   ],
 
-                  // Health Data Section
-                  if (_isLoadingHealth) ...[
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                  if (_isLoadingHealth)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: scheme.primary,
+                          ),
+                        ),
                       ),
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color:
-                            Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Center(child: CircularProgressIndicator()),
-                    ),
-                  ] else if (!healthProvider.hasPermissions) ...[
-                    HealthPermissionCard(
-                      onRequestPermissions: () {
-                        debugPrint(
-                          '[HomeScreen] HealthPermissionCard tapped - requesting permissions',
-                        );
-                        _requestHealthPermissions();
-                      },
-                    ),
-                  ] else ...[
+                    )
+                  else if (!healthProvider.hasPermissions &&
+                      !_healthBannerDismissed)
+                    HealthPermissionBanner(
+                      onRequestPermissions: _requestHealthPermissions,
+                      onDismiss:
+                          () => setState(() => _healthBannerDismissed = true),
+                    )
+                  else if (healthProvider.hasPermissions)
                     HealthDataCard(
                       healthData: _healthData,
                       showWorkoutSessions: false,
                     ),
-                  ],
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppLayout.sectionGap),
 
-                  // Action Buttons
-                  _buildActionButton('Select Date', () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DatePickerScreen(),
-                      ),
-                    );
-                  }),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton(
-                    'Quick Add to Today',
-                    _showQuickAddOptions,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton('Inventory', () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const InventoryScreen(),
-                      ),
-                    );
-                  }),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton('AI Recipe Generator', () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AiMealPlannerScreen(),
-                      ),
-                    ).then((_) => _loadTodayCalories());
-                  }),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton(
-                    'Weekly Analysis',
-                    _hasSevenDaysData
-                        ? () {
-                          // Get the past 7 days starting from today
-                          final endDate = DateTime.now();
-                          final startDate = endDate.subtract(
-                            const Duration(days: 6),
-                          );
-                          final weekStartString = DateFormat(
-                            'yyyy-MM-dd',
-                          ).format(startDate);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => WeeklyAnalysisScreen(
-                                    weekStartDate: weekStartString,
+                  const SectionHeader(title: "Today's meals"),
+                  if (_loadingEntries)
+                    ...List.generate(3, (_) => const SkeletonTile())
+                  else if (_todayEntries.isEmpty)
+                    const EmptyStateView(
+                      icon: Icons.restaurant_outlined,
+                      title: 'No meals yet',
+                      message: 'Tap "Add entry" to log your first meal.',
+                    )
+                  else
+                    ..._todayEntries.take(5).map((entry) {
+                      final kcal =
+                          fmtNum((entry.calories ?? 0) * entry.amount / 100);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(AppLayout.radius),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => _editEntry(entry),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          entry.foodName ?? 'Food',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${fmtNum(entry.amount)} ${entry.unit ?? 'g'}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '$kcal kcal',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: scheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          );
-                        }
-                        : () {
-                          // Show alert that 7 days of data is required
-                          AlertHelper.showInfoAlert(
-                            context,
-                            title: 'Insufficient Data',
-                            message:
-                                'At least 7 days of logged food data is required to generate a weekly analysis. Please continue logging your meals and try again.',
-                          );
-                        },
-                    isEnabled: _hasSevenDaysData,
+                          ),
+                        ),
+                      );
+                    }),
+                  if (_todayEntries.length > 5)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _openDailyLog,
+                        child: Text(
+                          '+${_todayEntries.length - 5} more',
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: AppLayout.sectionGap),
+
+                  const SectionHeader(title: 'Actions'),
+                  NavRow(
+                    icon: Icons.calendar_today_outlined,
+                    title: 'Select Date',
+                    subtitle: 'Browse or open another day',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DatePickerScreen(),
+                        ),
+                      ).then((_) => _loadTodayData());
+                    },
                   ),
-
-                  const SizedBox(height: 16),
-
-                  _buildActionButton('Settings', _openSettings),
-
-                  // Bottom padding to ensure proper spacing from screen bottom
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 8),
+                  NavRow(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'AI Recipe Generator',
+                    subtitle: 'Create recipes from a photo',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AiMealPlannerScreen(),
+                        ),
+                      ).then((_) => _loadTodayData());
+                    },
+                  ),
                 ],
               ),
             ),
@@ -519,30 +527,5 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
-
-  Widget _buildActionButton(
-    String text,
-    VoidCallback onPressed, {
-    bool isEnabled = true,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: isEnabled ? onPressed : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 4,
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
 }
+

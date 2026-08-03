@@ -8,11 +8,23 @@ import '../services/debug_service.dart';
 import '../services/gemini_model_service.dart';
 import '../services/fasting_service.dart';
 import '../models/fasting_settings.dart';
+import '../services/log_service.dart';
+import '../services/health_service.dart';
 import '../widgets/custom_alert.dart';
 import '../widgets/fasting_overview_card.dart';
+import '../widgets/ui_kit.dart';
+
+/// The distinct settings areas, each shown on its own screen.
+enum SettingsSection { appearance, profile, targets, fasting, reminders, ai, debug }
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final bool asTabRoot;
+
+  /// When null, the screen shows the settings index (a list of sections).
+  /// When set, it shows that single section on its own screen.
+  final SettingsSection? section;
+
+  const SettingsScreen({super.key, this.asTabRoot = false, this.section});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -49,6 +61,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _fastingEnabled = false;
   TimeOfDay _eatingStart = const TimeOfDay(hour: 12, minute: 0);
   double _eatingDurationHours = 8;
+
+  // Reminder settings
+  bool _dailyReminderEnabled = true;
+  bool _weeklyReminderEnabled = true;
+  bool? _notificationsPermissionGranted;
 
   bool _originalFastingEnabled = false;
   TimeOfDay _originalEatingStart = const TimeOfDay(hour: 12, minute: 0);
@@ -137,9 +154,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final geminiModel = await SettingsService.getGeminiModel();
     final macroTargets = await SettingsService.getMacroTargets();
     final fastingSettings = await FastingService.getSettings();
+    final dailyReminder = await SettingsService.isDailyReminderEnabled();
+    final weeklyReminder = await SettingsService.isWeeklyReminderEnabled();
+    final notifEnabled = await SchedulerService.areNotificationsEnabled();
 
     if (mounted) {
       setState(() {
+        _dailyReminderEnabled = dailyReminder;
+        _weeklyReminderEnabled = weeklyReminder;
+        _notificationsPermissionGranted = notifEnabled;
         _selectedSex = sex;
         _selectedActivityLevel = activityLevel;
         _selectedGoals = goals;
@@ -470,248 +493,192 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.section == null) {
+      return _buildIndex();
+    }
+    return _buildSectionScreen(widget.section!);
+  }
+
+  ({String title, IconData icon, String subtitle}) _sectionInfo(
+    SettingsSection section,
+  ) {
+    switch (section) {
+      case SettingsSection.appearance:
+        return (
+          title: 'Appearance',
+          icon: Icons.palette_outlined,
+          subtitle: 'Theme and colors',
+        );
+      case SettingsSection.profile:
+        return (
+          title: 'Profile & Goals',
+          icon: Icons.person_outline,
+          subtitle: 'Body metrics and calorie target',
+        );
+      case SettingsSection.targets:
+        return (
+          title: 'Nutrition Targets',
+          icon: Icons.track_changes_outlined,
+          subtitle: 'Protein, carbs, and fat goals',
+        );
+      case SettingsSection.fasting:
+        return (
+          title: 'Intermittent Fasting',
+          icon: Icons.timelapse_outlined,
+          subtitle: 'Eating window and schedule',
+        );
+      case SettingsSection.reminders:
+        return (
+          title: 'Reminders',
+          icon: Icons.notifications_outlined,
+          subtitle: 'Daily and weekly notifications',
+        );
+      case SettingsSection.ai:
+        return (
+          title: 'AI Configuration',
+          icon: Icons.smart_toy_outlined,
+          subtitle: 'Gemini API key and model',
+        );
+      case SettingsSection.debug:
+        return (
+          title: 'Debug Testing',
+          icon: Icons.bug_report_outlined,
+          subtitle: 'Developer tools',
+        );
+    }
+  }
+
+  Widget _sectionContent(SettingsSection section) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    switch (section) {
+      case SettingsSection.appearance:
+        return _buildThemeSelector(themeProvider);
+      case SettingsSection.profile:
+        return _buildModernProfileSection();
+      case SettingsSection.targets:
+        return _buildMacroTargetsSection();
+      case SettingsSection.fasting:
+        return _buildFastingSection();
+      case SettingsSection.reminders:
+        return _buildRemindersSection();
+      case SettingsSection.ai:
+        return _buildModernApiKeySection();
+      case SettingsSection.debug:
+        return _buildDebugTestingSection();
+    }
+  }
 
-    return WillPopScope(
-      onWillPop: _showUnsavedChangesDialog,
-      child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          elevation: 0,
-          leading: IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            onPressed: () async {
-              final canPop = await _showUnsavedChangesDialog();
-              if (canPop && mounted) {
-                Navigator.of(context).pop();
-              }
-            },
-          ),
-          title:
-              _hasUnsavedChanges
-                  ? Row(
-                    children: [
-                      Text(
-                        'Settings',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange, width: 1),
-                        ),
-                        child: const Text(
-                          'Unsaved',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                  : Text(
-                    'Settings',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.bold,
-                    ),
+  Widget _buildIndex() {
+    final sections = <SettingsSection>[
+      SettingsSection.appearance,
+      SettingsSection.profile,
+      SettingsSection.targets,
+      SettingsSection.fasting,
+      SettingsSection.reminders,
+      SettingsSection.ai,
+      if (kDebugMode) SettingsSection.debug,
+    ];
+
+    return Scaffold(
+      appBar: PageAppBar(
+        title: 'Settings',
+        subtitle: 'Customize tracking, reminders, and AI',
+        automaticallyImplyLeading: !widget.asTabRoot,
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: sections.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final info = _sectionInfo(sections[index]);
+            return NavRow(
+              icon: info.icon,
+              title: info.title,
+              subtitle: info.subtitle,
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(section: sections[index]),
                   ),
-          actions: [
-            if (_hasUnsavedChanges) ...[
-              IconButton(
-                icon:
-                    _isSaving
-                        ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        )
-                        : Icon(
-                          Icons.save,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                onPressed: _isSaving ? null : _saveAllSettings,
-                tooltip: 'Save All Settings',
-              ),
-            ],
-            IconButton(
-              icon: Icon(
-                Icons.home_outlined,
-                color: Theme.of(context).colorScheme.primary,
-                size: 28,
-              ),
-              onPressed: () async {
-                final canPop = await _showUnsavedChangesDialog();
-                if (canPop && mounted) {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                }
+                );
+                if (mounted) _loadSettings();
               },
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 24.0,
-            ),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Text(
-                      'Settings',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Customize your nutrition tracking experience',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Theme Settings Section
-                    _buildModernSection(
-                      title: 'Theme',
-                      icon: Icons.palette_outlined,
-                      child: _buildThemeSelector(themeProvider),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Profile Settings Section
-                    _buildModernSection(
-                      title: 'Profile',
-                      icon: Icons.person_outline,
-                      child: _buildModernProfileSection(),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Fasting Settings Section
-                    _buildModernSection(
-                      title: 'Intermittent Fasting',
-                      icon: Icons.timelapse_outlined,
-                      child: _buildFastingSection(),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Nutrition Targets Section
-                    _buildModernSection(
-                      title: 'Nutrition Targets',
-                      icon: Icons.track_changes_outlined,
-                      child: _buildMacroTargetsSection(),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // AI Settings Section
-                    _buildModernSection(
-                      title: 'AI Configuration',
-                      icon: Icons.smart_toy_outlined,
-                      child: _buildModernApiKeySection(),
-                    ),
-
-                    // Debug Testing Section (only in debug mode)
-                    if (kDebugMode) ...[
-                      const SizedBox(height: 24),
-                      _buildModernSection(
-                        title: 'Debug Testing',
-                        icon: Icons.bug_report_outlined,
-                        child: _buildDebugTestingSection(),
-                      ),
-                    ],
-
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildModernSection({
-    required String title,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+  Widget _buildSectionScreen(SettingsSection section) {
+    final info = _sectionInfo(section);
+    final scheme = Theme.of(context).colorScheme;
+
+    return WillPopScope(
+      onWillPop: _showUnsavedChangesDialog,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final canPop = await _showUnsavedChangesDialog();
+              if (canPop && mounted) Navigator.of(context).pop();
+            },
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
+          title: Row(
+            children: [
+              Flexible(child: Text(info.title)),
+              if (_hasUnsavedChanges) ...[
+                const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+                    color: scheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Icon(
-                    icon,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
+                  child: Text(
+                    'Unsaved',
+                    style: TextStyle(
+                      color: scheme.onTertiaryContainer,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-            child,
+            ],
+          ),
+          actions: [
+            if (_hasUnsavedChanges)
+              IconButton(
+                icon:
+                    _isSaving
+                        ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.save),
+                onPressed: _isSaving ? null : _saveAllSettings,
+                tooltip: 'Save',
+              ),
           ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: _sectionContent(section),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -1254,6 +1221,206 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 32),
+
+        Text(
+          'Health Connect',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Share logged meals with Google Health and other apps. '
+          'Use resync to backfill meals logged before write access was enabled.',
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.tonalIcon(
+            onPressed: _resyncMealsToHealth,
+            icon: const Icon(Icons.sync_rounded, size: 18),
+            label: const Text('Resync meals to Health Connect'),
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  Future<void> _resyncMealsToHealth() async {
+    try {
+      _showSnackBar('Requesting permission & syncing…', Colors.blue);
+      final granted =
+          await HealthService.instance.requestNutritionWritePermission();
+      if (!granted) {
+        if (!mounted) return;
+        AlertHelper.showInfoAlert(
+          context,
+          title: 'Permission needed',
+          message:
+              'Allow Calorium to write nutrition in Health Connect, then try again.',
+        );
+        return;
+      }
+      final count = await LogService().resyncMealsToHealthConnect();
+      if (!mounted) return;
+      if (count == 0) {
+        _showSnackBar('No meals to sync in the last 90 days.', Colors.orange);
+      } else {
+        _showSnackBar(
+          'Synced $count meal${count == 1 ? '' : 's'} to Health Connect.',
+          Colors.green,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('Resync failed: $e', Colors.red);
+    }
+  }
+
+  Widget _buildRemindersSection() {
+    final theme = Theme.of(context);
+    final supported = SchedulerService.isSupported;
+
+    if (!supported) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Reminders are only available on Android and iOS. '
+                'Run the app on a mobile device to configure notifications.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final permissionLabel =
+        _notificationsPermissionGranted == null
+            ? 'Checking…'
+            : (_notificationsPermissionGranted!
+                ? 'Notifications allowed'
+                : 'Notifications blocked — enable in system settings');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          permissionLabel,
+          style: TextStyle(
+            fontSize: 13,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Reminders open the app so analysis can run. Background AI is not run while the app is closed.',
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+          ),
+        ),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Daily check-in (10 PM)'),
+          subtitle: const Text('Evening reminder to review today\'s log'),
+          value: _dailyReminderEnabled,
+          onChanged: (value) async {
+            if (value) {
+              final granted =
+                  await SchedulerService.requestNotificationPermissions();
+              setState(() => _notificationsPermissionGranted = granted);
+            }
+            setState(() => _dailyReminderEnabled = value);
+            await SettingsService.setDailyReminderEnabled(value);
+            await SchedulerService.setupScheduledNotifications();
+          },
+        ),
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Weekly review (Sun 8 PM)'),
+          subtitle: const Text('Sunday reminder to open Insights'),
+          value: _weeklyReminderEnabled,
+          onChanged: (value) async {
+            if (value) {
+              final granted =
+                  await SchedulerService.requestNotificationPermissions();
+              setState(() => _notificationsPermissionGranted = granted);
+            }
+            setState(() => _weeklyReminderEnabled = value);
+            await SettingsService.setWeeklyReminderEnabled(value);
+            await SchedulerService.setupScheduledNotifications();
+          },
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  await SchedulerService.showTestNotification();
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Test notification sent')),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not send test: $e')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.notifications_active_outlined, size: 18),
+              label: const Text('Send test'),
+            ),
+            if (kDebugMode)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    await SchedulerService.scheduleShortDelayTest();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Scheduled test in ~15 seconds'),
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not schedule test: $e')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.schedule, size: 18),
+                label: const Text('Schedule 15s test'),
+              ),
+          ],
+        ),
       ],
     );
   }
