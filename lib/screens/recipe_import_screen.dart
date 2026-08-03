@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,7 +13,6 @@ import '../services/video_resolvers/video_resolver.dart';
 import '../theme/app_theme.dart';
 import '../utils/num_format.dart';
 import '../utils/spice_list.dart';
-import '../widgets/recipe_video_player.dart';
 import '../widgets/ui_kit.dart';
 import 'imported_recipe_detail_screen.dart';
 import 'settings_screen.dart';
@@ -348,8 +348,8 @@ class _RecipeImportScreenState extends State<RecipeImportScreen> {
         AppTheme.space24,
       ),
       children: [
-        if (resolved?.videoLocalPath != null) ...[
-          RecipeVideoPlayer(videoPath: resolved!.videoLocalPath!),
+        if (resolved?.thumbnailPath != null) ...[
+          _buildThumbnail(resolved!.thumbnailPath!),
           const SizedBox(height: AppTheme.space12),
         ] else ...[
           _buildNoVideoNotice(),
@@ -399,6 +399,27 @@ class _RecipeImportScreenState extends State<RecipeImportScreen> {
     );
   }
 
+  Widget _buildThumbnail(String path) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (context, _, __) => Container(
+            color: scheme.surfaceContainerHigh,
+            child: Center(
+              child: Icon(Icons.image_not_supported_rounded,
+                  color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNoVideoNotice() {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -413,7 +434,7 @@ class _RecipeImportScreenState extends State<RecipeImportScreen> {
           const SizedBox(width: AppTheme.space12),
           Expanded(
             child: Text(
-              'The video could not be downloaded, but the recipe was read from '
+              'No preview image was available, but the recipe was read from '
               'the caption. Use the button below to open the original.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,

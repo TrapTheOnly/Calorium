@@ -52,6 +52,9 @@ class ImportedRecipe {
 
   bool get hasVideo => videoPath != null && videoPath!.isNotEmpty;
 
+  bool get hasThumbnail =>
+      thumbnailPath != null && thumbnailPath!.isNotEmpty;
+
   Map<String, dynamic> toMap() {
     return {
       'foodId': foodId,

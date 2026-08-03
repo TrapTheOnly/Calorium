@@ -41,22 +41,13 @@ class InstagramResolver implements VideoResolver {
     final rawDescription = _metaContent(html, 'og:description') ?? '';
     final caption = _extractCaption(rawDescription);
     final imageUrl = _metaContent(html, 'og:image');
-    final videoUrl = _metaContent(html, 'og:video') ?? _embeddedVideoUrl(html);
 
-    // Download whatever media we located (Instagram exposes a single quality;
-    // there is no reliable on-device path to force 480p, so we save as-is).
-    String? videoPath;
-    if (videoUrl != null && videoUrl.isNotEmpty) {
-      onProgress?.call('Downloading video…');
-      videoPath = await RecipeMediaStorage.downloadToFile(
-        videoUrl,
-        '${RecipeMediaStorage.safeName(cleanUrl)}.mp4',
-        headers: _crawlerHeaders,
-      );
-    }
-
+    // We deliberately only save the poster image, not the video: reels can be
+    // hundreds of MB, downloading them reliably is not feasible on-device, and a
+    // thumbnail + "open original" link covers the use-case far more cheaply.
     String? thumbPath;
     if (imageUrl != null && imageUrl.isNotEmpty) {
+      onProgress?.call('Fetching thumbnail…');
       thumbPath = await RecipeMediaStorage.downloadToFile(
         imageUrl,
         '${RecipeMediaStorage.safeName(cleanUrl)}_thumb.jpg',
@@ -69,7 +60,6 @@ class InstagramResolver implements VideoResolver {
       sourceUrl: url,
       title: title,
       caption: caption,
-      videoLocalPath: videoPath,
       thumbnailPath: thumbPath,
     );
   }
@@ -102,14 +92,6 @@ class InstagramResolver implements VideoResolver {
     return null;
   }
 
-  /// Fallback: pull a `"video_url":"..."` value out of embedded JSON.
-  String? _embeddedVideoUrl(String html) {
-    if (html.isEmpty) return null;
-    final match = RegExp(r'"video_url":"([^"]+)"').firstMatch(html);
-    if (match == null) return null;
-    return _unescapeJson(match.group(1)!);
-  }
-
   /// Instagram's og:description looks like:
   ///   `123 likes, 45 comments - user on Instagram: "the real caption"`
   /// Extract the quoted caption when present, otherwise return the whole string.
@@ -118,13 +100,6 @@ class InstagramResolver implements VideoResolver {
     final quoted = RegExp(r'[:]\s*"([\s\S]*)"\s*$').firstMatch(description);
     if (quoted != null) return quoted.group(1)!.trim();
     return description.trim();
-  }
-
-  String _unescapeJson(String input) {
-    return input
-        .replaceAll(r'\u0026', '&')
-        .replaceAll(r'\/', '/')
-        .replaceAll(r'\"', '"');
   }
 
   String _unescapeHtml(String input) {
