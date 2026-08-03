@@ -111,7 +111,38 @@ class NutritionAnalysisService {
         });
       }
 
+      // Remaining vs targets — the most useful signal for actionable tips.
+      final proteinTarget = macroTargets?['protein'];
+      final carbsTarget = macroTargets?['carbs'];
+      final fatTarget = macroTargets?['fat'];
+      final calorieTargetD = macroTargets != null
+          ? (proteinTarget! * 4 + carbsTarget! * 4 + fatTarget! * 9)
+          : null;
+      String remain(double target, double have) {
+        final r = target - have;
+        return r >= 0 ? '${r.round()}g left' : '${(-r).round()}g over';
+      }
+
+      final gapsSection = macroTargets != null
+          ? 'REMAINING VS TARGET (today):\n'
+              '- Calories: ${(calorieTargetD! - totalCalories).round()} kcal '
+              '${calorieTargetD - totalCalories >= 0 ? 'left' : 'over'}\n'
+              '- Protein: ${remain(proteinTarget!, totalProtein)}\n'
+              '- Carbs: ${remain(carbsTarget!, totalCarbs)}\n'
+              '- Fat: ${remain(fatTarget!, totalFat)}'
+          : 'Daily targets not set.';
+
+      final hourNow = DateTime.now().hour;
+      final mealsLeft = hourNow < 11
+          ? 'most of the day remains (breakfast/lunch/dinner ahead)'
+          : hourNow < 15
+              ? 'lunch and dinner likely remain'
+              : hourNow < 20
+                  ? 'dinner likely remains'
+                  : 'the day is nearly over';
+
       // Prepare the AI analysis request
+      final varietySeed = DateTime.now().millisecondsSinceEpoch;
       final requestBody = {
         "contents": [
           {
@@ -135,52 +166,47 @@ TODAY'S INTAKE ($date):
 - Carbohydrates: ${totalCarbs.round()}g  
 - Fat: ${totalFat.round()}g
 
+$gapsSection
+
+TIME CONTEXT: It is ${hourNow}:00 — $mealsLeft.
+
 FOODS CONSUMED TODAY:
 ${foodDetails.map((food) => '• ${food['name']}: ${food['amount']}g (${food['calories']}kcal, ${food['protein']}g protein, ${food['carbs']}g carbs, ${food['fat']}g fat)').join('\n')}
 
 RECENT PERFORMANCE (last 3 days average):
 ${recentDaysData.isNotEmpty ? '- Average Calories: ${(recentDaysData.map((d) => d['calories']!).reduce((a, b) => a + b) / recentDaysData.length).round()}kcal\n- Average Protein: ${(recentDaysData.map((d) => d['protein']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g\n- Average Carbs: ${(recentDaysData.map((d) => d['carbs']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g\n- Average Fat: ${(recentDaysData.map((d) => d['fat']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g' : 'No recent data available'}
 
-TASK: Analyze this nutrition data and respond with ONLY a valid JSON object in this exact format:
+TASK: Respond with ONLY a valid JSON object in this exact format:
 
 {
-  "suggestions": [
-    "Specific actionable nutrition tip #1",
-    "Specific actionable nutrition tip #2", 
-    "Specific actionable nutrition tip #3",
-    "Specific actionable nutrition tip #4",
-    "Specific actionable nutrition tip #5"
+  "headline": "One short line summarizing where today's intake stands vs targets.",
+  "focus": "The single most important thing to fix right now, specific and grounded in the remaining-vs-target numbers and the time of day.",
+  "tips": [
+    "Specific, quantified tip #1 (e.g. 'Add 150g Greek yogurt for +15g protein').",
+    "Specific, quantified tip #2.",
+    "Specific, quantified tip #3."
   ],
-  "motivationalQuote": "Personalized motivational quote based on their recent performance and goals"
+  "action": {
+    "title": "One concrete food to add now, with amount and its macro effect (e.g. '2 eggs → +12g protein, 140 kcal')."
+  },
+  "quote": "Short, personal, encouraging line referencing their actual day/goals."
 }
 
-GUIDELINES for suggestions:
-1. Be specific and actionable (e.g., "Add 150g Greek yogurt for 20g more protein" not "eat more protein")
-2. Consider their goals, activity level, and current intake vs targets
-3. Address specific deficiencies or excesses you notice
-4. Include food timing suggestions if relevant
-5. Be encouraging but realistic
-6. Focus on nutrition quality, not just quantities
-7. Consider food variety and micronutrients
-8. Each suggestion should be unique and valuable
-
-GUIDELINES for motivational quote:
-1. Make it personal to their recent performance 
-2. Acknowledge their progress or effort
-3. Keep it encouraging and forward-looking
-4. Reference their specific goals
-5. Keep it concise (1-2 sentences)
-6. Make it feel genuine, not generic
-
-Remember: Respond with ONLY the JSON object, no additional text.
+GUIDELINES:
+1. Ground EVERYTHING in the remaining-vs-target numbers and the time of day — if protein is short and dinner remains, say so.
+2. Be specific and quantified (amounts + macro deltas), never generic ("eat more protein" is banned).
+3. If they are over on calories, focus tips on lighter choices instead of adding food.
+4. "focus" must be the ONE highest-impact change; "action" must be a single realistic food to add (or a swap if they're over).
+5. Vary the angle day to day: rotate protein timing, fibre, micronutrients, hydration, meal composition. (variety seed: $varietySeed)
+6. Keep each field concise. Respond with ONLY the JSON object, no extra text.
 """,
               },
             ],
           },
         ],
         "generationConfig": {
-          "temperature": 0.7,
-          "topK": 40,
+          "temperature": 1.0,
+          "topK": 64,
           "topP": 0.95,
           "maxOutputTokens": 1000,
         },
@@ -220,20 +246,21 @@ Remember: Respond with ONLY the JSON object, no additional text.
 
             cleanedText = cleanedText.trim();
 
-            final analysisResult = json.decode(cleanedText);
+            final analysisResult =
+                json.decode(cleanedText) as Map<String, dynamic>;
 
-            // Validate the response structure
-            if (analysisResult['suggestions'] is List &&
-                analysisResult['motivationalQuote'] is String &&
-                (analysisResult['suggestions'] as List).length == 5) {
-              // Store the suggestions and quote
-              await SettingsService.setDailyAiSuggestions(
-                date,
-                (analysisResult['suggestions'] as List).cast<String>(),
-              );
-              await SettingsService.setAiQuote(
-                analysisResult['motivationalQuote'],
-              );
+            // Accept the new typed schema (headline/focus/tips/action/quote)
+            // and gracefully fall back to the legacy suggestions/quote shape.
+            final tips = (analysisResult['tips'] as List?)?.cast<String>() ??
+                (analysisResult['suggestions'] as List?)?.cast<String>();
+            final quote = (analysisResult['quote'] ??
+                analysisResult['motivationalQuote']) as String?;
+
+            if (tips != null && tips.isNotEmpty) {
+              // Persist the full typed payload plus back-compat fields.
+              await SettingsService.setDailyAiInsights(date, analysisResult);
+              await SettingsService.setDailyAiSuggestions(date, tips);
+              if (quote != null) await SettingsService.setAiQuote(quote);
               await SettingsService.setLastAiAnalysisDate(date);
 
               return analysisResult;
@@ -324,6 +351,56 @@ Remember: Respond with ONLY the JSON object, no additional text.
         });
       }
 
+      // Compute deterministic stats here so the model only INTERPRETS them
+      // (it must never invent the numbers — that made the old report feel
+      // random). Averages are over logged days only.
+      final logged =
+          weeklyData.where((d) => (d['foodsCount'] as int) > 0).toList();
+      final loggedN = logged.length;
+      double avgOf(String key) => loggedN == 0
+          ? 0
+          : logged.map((d) => (d[key] as num).toDouble()).reduce((a, b) => a + b) /
+              loggedN;
+      final avgCal = avgOf('calories');
+      final avgProt = avgOf('protein');
+      final avgCarb = avgOf('carbs');
+      final avgFat = avgOf('fat');
+
+      final proteinTarget = macroTargets?['protein'];
+      final calorieTarget = macroTargets != null
+          ? (macroTargets['protein']! * 4 +
+              macroTargets['carbs']! * 4 +
+              macroTargets['fat']! * 9)
+          : null;
+      final proteinHits = proteinTarget == null
+          ? 0
+          : logged.where((d) => (d['protein'] as num) >= proteinTarget).length;
+      final calorieOnTarget = calorieTarget == null
+          ? 0
+          : logged
+              .where((d) =>
+                  (d['calories'] as num) >= calorieTarget * 0.9 &&
+                  (d['calories'] as num) <= calorieTarget * 1.1)
+              .length;
+
+      final pK = logged.fold<double>(0, (s, d) => s + (d['protein'] as num) * 4);
+      final cK = logged.fold<double>(0, (s, d) => s + (d['carbs'] as num) * 4);
+      final fK = logged.fold<double>(0, (s, d) => s + (d['fat'] as num) * 9);
+      final tK = pK + cK + fK;
+      String macroPct(double x) => tK <= 0 ? '0' : ((x / tK) * 100).round().toString();
+
+      final foodCounts = <String, int>{};
+      for (final d in weeklyData) {
+        for (final f in (d['foods'] as List)) {
+          foodCounts[f as String] = (foodCounts[f] ?? 0) + 1;
+        }
+      }
+      final topFoods = (foodCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value)))
+          .take(6)
+          .map((e) => '${e.key} (${e.value}x)')
+          .join(', ');
+
       // Prepare the weekly analysis request
       final requestBody = {
         "contents": [
@@ -331,54 +408,42 @@ Remember: Respond with ONLY the JSON object, no additional text.
             "parts": [
               {
                 "text": """
-You are a professional nutritionist providing a comprehensive weekly nutrition analysis.
+You are a sharp, supportive nutrition coach. You are given ALREADY-COMPUTED weekly statistics. Do NOT recompute or contradict them — interpret them and give grounded, specific advice.
 
 USER PROFILE:
-- Age: $age years
-- Sex: $sex
-- Weight: ${weight}kg
-- Height: ${height}cm
-- Activity Level: $activityLevel
-- Goals: $goals
-- Daily Targets: ${macroTargets != null ? 'Protein: ${macroTargets['protein']}g, Carbs: ${macroTargets['carbs']}g, Fat: ${macroTargets['fat']}g' : 'Not set'}
+- Age: $age, Sex: $sex, Weight: ${weight}kg, Height: ${height}cm
+- Activity: $activityLevel, Goals: $goals
+- Daily targets: ${macroTargets != null ? 'Protein ${macroTargets['protein']}g, Carbs ${macroTargets['carbs']}g, Fat ${macroTargets['fat']}g${calorieTarget != null ? ' (~${calorieTarget.round()} kcal)' : ''}' : 'Not set'}
 
-WEEKLY DATA ($weekStartDate to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
-${weeklyData.map((day) => '${day['dayName']}: ${day['calories']}kcal, ${day['protein']}g protein, ${day['carbs']}g carbs, ${day['fat']}g fat (${day['foodsCount']} foods)').join('\n')}
+COMPUTED WEEKLY STATS ($weekStartDate to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
+- Days logged: $loggedN of 7
+- Average per logged day: ${avgCal.round()} kcal, ${avgProt.round()}g protein, ${avgCarb.round()}g carbs, ${avgFat.round()}g fat
+- Protein target hit on $proteinHits of $loggedN logged days${calorieTarget != null ? '; calories within +/-10% of target on $calorieOnTarget of $loggedN days' : ''}
+- Macro split by calories: ${macroPct(pK)}% protein, ${macroPct(cK)}% carbs, ${macroPct(fK)}% fat
+- Most-logged foods: ${topFoods.isEmpty ? 'n/a' : topFoods}
+- Per-day intake: ${weeklyData.map((day) => '${(day['dayName'] as String).substring(0, 3)} ${day['calories']}kcal/${day['protein']}gP').join(', ')}
 
-TASK: Provide a comprehensive weekly analysis as a JSON object:
+TASK: Respond with ONLY this JSON object:
 
 {
-  "summary": {
-    "averageCalories": 0,
-    "averageProtein": 0,
-    "averageCarbs": 0,
-    "averageFat": 0,
-    "consistency": "High/Medium/Low",
-    "targetAdherence": "Excellent/Good/Needs Improvement"
-  },
-  "insights": [
-    "Key insight about weekly patterns",
-    "Observation about nutrition quality",
-    "Comment on goal progress"
+  "pattern": "The single most important, specific pattern this week in one sentence, grounded in the stats above (e.g. 'Protein fell ~30g below target every weekend').",
+  "swaps": [
+    {"title": "Concrete food B instead of food A (use their most-logged foods when relevant)", "detail": "quantified macro change, e.g. '+18g protein, -70 kcal'"},
+    {"title": "Second realistic swap targeting their biggest gap", "detail": "quantified change"}
   ],
-  "recommendations": [
-    "Specific recommendation for next week #1",
-    "Specific recommendation for next week #2",
-    "Specific recommendation for next week #3"
-  ],
-  "weeklyQuote": "Motivational quote reflecting their weekly performance"
+  "insights": ["Grounded observation #1", "Grounded observation #2", "Grounded observation #3"],
+  "recommendations": ["Actionable next-week step #1", "step #2", "step #3"],
+  "quote": "One short, personal, encouraging line referencing their actual week."
 }
 
-Calculate averages, assess consistency of intake, evaluate target adherence, and provide actionable insights and recommendations for the upcoming week.
-
-Respond with ONLY the JSON object, no additional text.
+Rules: be specific and numeric; tie every point to the stats; target the biggest gap (usually the macro furthest from target); no generic filler. Respond with ONLY the JSON object.
 """,
               },
             ],
           },
         ],
         "generationConfig": {
-          "temperature": 0.7,
+          "temperature": 0.8,
           "topK": 40,
           "topP": 0.95,
           "maxOutputTokens": 1200,
