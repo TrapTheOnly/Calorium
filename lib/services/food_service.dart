@@ -149,11 +149,73 @@ class FoodService {
   
   Future<int> updateFood(Food food) async {
     final db = await DatabaseService.instance.database;
-    return await db.update(
+    final result = await db.update(
       'foods',
       food.toMap(),
       where: 'id = ?',
       whereArgs: [food.id],
+    );
+    // A recipe's macros are stored (denormalized) on its compound food row and
+    // used by logging and every aggregate reader. Editing an ingredient must
+    // therefore refresh any recipe that uses it, or the recipe's logged calories
+    // would silently diverge from the (live) preview shown on its detail screen.
+    if (food.id != null) {
+      await _recomputeCompoundsContaining(food.id!);
+    }
+    return result;
+  }
+
+  /// Recomputes the denormalized per-100 macros of every compound food that
+  /// lists [componentId] as an ingredient, from the current ingredient rows.
+  Future<void> _recomputeCompoundsContaining(int componentId) async {
+    final db = await DatabaseService.instance.database;
+    final recipeRows = await db.rawQuery(
+      'SELECT DISTINCT recipeId FROM components WHERE componentId = ?',
+      [componentId],
+    );
+    for (final row in recipeRows) {
+      final recipeId = row['recipeId'] as int?;
+      if (recipeId != null) await _recomputeCompound(recipeId);
+    }
+  }
+
+  /// Rebuilds one compound food's per-100 macros from its live ingredient rows.
+  /// The recipe's serving size (defaultPortionSize) is intentionally left as-is:
+  /// editing an ingredient's nutrition changes macros, not the recipe's weight.
+  Future<void> _recomputeCompound(int recipeId) async {
+    final db = await DatabaseService.instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT f.calories, f.fat, f.carbs, f.protein, c.amount
+      FROM components c JOIN foods f ON f.id = c.componentId
+      WHERE c.recipeId = ?
+    ''',
+      [recipeId],
+    );
+    if (rows.isEmpty) return;
+
+    double totalWeight = 0, cal = 0, fat = 0, carb = 0, prot = 0;
+    for (final r in rows) {
+      final amount = (r['amount'] as num?)?.toDouble() ?? 0;
+      totalWeight += amount;
+      cal += ((r['calories'] as num?)?.toDouble() ?? 0) * amount / 100;
+      fat += ((r['fat'] as num?)?.toDouble() ?? 0) * amount / 100;
+      carb += ((r['carbs'] as num?)?.toDouble() ?? 0) * amount / 100;
+      prot += ((r['protein'] as num?)?.toDouble() ?? 0) * amount / 100;
+    }
+    if (totalWeight <= 0) return;
+    final factor = 100 / totalWeight;
+
+    await db.update(
+      'foods',
+      {
+        'calories': cal * factor,
+        'fat': fat * factor,
+        'carbs': carb * factor,
+        'protein': prot * factor,
+      },
+      where: 'id = ?',
+      whereArgs: [recipeId],
     );
   }
   

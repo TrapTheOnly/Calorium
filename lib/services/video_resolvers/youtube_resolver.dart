@@ -1,14 +1,12 @@
-import 'dart:io';
-import 'package:path/path.dart' as p;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'video_resolver.dart';
 
 /// Resolves YouTube (incl. Shorts) links: title + description + best-effort top
-/// comment, plus a downloaded muxed stream closest to 480p.
+/// comment, plus the video thumbnail.
 ///
-/// Note: YouTube muxed (audio+video) streams typically cap at ~360p; higher
-/// resolutions require separate audio/video muxing (ffmpeg) which is out of
-/// scope, so we download the highest available muxed stream up to 480p.
+/// We intentionally do not download the video itself — it's large, slow, and
+/// unnecessary for recipe import. A thumbnail plus an "open original" link is
+/// far cheaper and more reliable.
 class YouTubeResolver implements VideoResolver {
   @override
   bool canHandle(String url) {
@@ -37,35 +35,7 @@ class YouTubeResolver implements VideoResolver {
         }
       } catch (_) {}
 
-      // Download the muxed stream closest to (but not above) 480p.
-      String? videoPath;
-      try {
-        onProgress?.call('Downloading video…');
-        final manifest = await yt.videos.streamsClient.getManifest(video.id);
-        final muxed = manifest.muxed.toList();
-        if (muxed.isNotEmpty) {
-          MuxedStreamInfo? chosen;
-          for (final s in muxed) {
-            if (s.videoResolution.height <= 480) {
-              if (chosen == null ||
-                  s.videoResolution.height > chosen.videoResolution.height) {
-                chosen = s;
-              }
-            }
-          }
-          // If every muxed stream is above 480p, fall back to the smallest.
-          if (chosen == null) {
-            muxed.sort(
-              (a, b) =>
-                  a.videoResolution.height.compareTo(b.videoResolution.height),
-            );
-            chosen = muxed.first;
-          }
-          videoPath = await _downloadStream(yt, chosen, id);
-        }
-      } catch (_) {}
-
-      // Thumbnail.
+      // Thumbnail only (see class doc — we don't download the video).
       String? thumbPath;
       try {
         onProgress?.call('Fetching thumbnail…');
@@ -81,30 +51,10 @@ class YouTubeResolver implements VideoResolver {
         title: video.title,
         caption: video.description,
         topComment: topComment,
-        videoLocalPath: videoPath,
         thumbnailPath: thumbPath,
       );
     } finally {
       yt.close();
     }
-  }
-
-  Future<String> _downloadStream(
-    YoutubeExplode yt,
-    StreamInfo info,
-    String id,
-  ) async {
-    final folder = await RecipeMediaStorage.dir();
-    final file = File(
-      p.join(folder.path, '${RecipeMediaStorage.safeName(id)}.mp4'),
-    );
-    final sink = file.openWrite();
-    try {
-      await yt.videos.streamsClient.get(info).pipe(sink);
-    } finally {
-      await sink.flush();
-      await sink.close();
-    }
-    return file.path;
   }
 }

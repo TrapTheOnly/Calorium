@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/food.dart';
@@ -10,12 +11,11 @@ import '../theme/app_theme.dart';
 import '../utils/fasting_prompt.dart';
 import '../utils/num_format.dart';
 import '../widgets/custom_alert.dart';
-import '../widgets/recipe_video_player.dart';
 import '../widgets/ui_kit.dart';
 
-/// Detail view for a recipe imported from a shared video: replays the local
-/// video, shows live nutrition + inventory-linked ingredients + instructions,
-/// links to the original, and logs servings to today.
+/// Detail view for a recipe imported from a shared video: shows the thumbnail,
+/// live nutrition + inventory-linked ingredients + instructions, links to the
+/// original, and logs servings to today.
 class ImportedRecipeDetailScreen extends StatefulWidget {
   const ImportedRecipeDetailScreen({super.key, required this.recipe});
 
@@ -118,8 +118,8 @@ class _ImportedRecipeDetailScreenState
                         AppTheme.space16,
                       ),
                       children: [
-                        if (recipe.hasVideo) ...[
-                          RecipeVideoPlayer(videoPath: recipe.videoPath!),
+                        if (recipe.hasThumbnail) ...[
+                          _buildThumbnail(recipe.thumbnailPath!),
                           const SizedBox(height: AppTheme.space12),
                         ],
                         OutlinedButton.icon(
@@ -152,6 +152,27 @@ class _ImportedRecipeDetailScreenState
                   _buildLogBar(),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnail(String path) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Image.file(
+          File(path),
+          fit: BoxFit.cover,
+          errorBuilder: (context, _, __) => Container(
+            color: scheme.surfaceContainerHigh,
+            child: Center(
+              child: Icon(Icons.image_not_supported_rounded,
+                  color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ),
       ),
     );
   }

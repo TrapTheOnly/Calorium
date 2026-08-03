@@ -81,22 +81,62 @@ class RecipeMediaStorage {
 
   /// Downloads [url] to a file named [filename] inside the media folder and
   /// returns its absolute path. Returns null on any failure.
+  ///
+  /// The response is streamed and written to disk incrementally, and aborted
+  /// once [maxBytes] is exceeded, so a large remote file can never be buffered
+  /// whole in memory (which previously risked OOM-killing the app on big reels).
   static Future<String?> downloadToFile(
     String url,
     String filename, {
     Map<String, String>? headers,
+    int maxBytes = 8 * 1024 * 1024,
   }) async {
+    final client = http.Client();
+    File? file;
+    IOSink? sink;
     try {
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+      final request = http.Request('GET', Uri.parse(url));
+      if (headers != null) request.headers.addAll(headers);
+      final response = await client.send(request);
+      if (response.statusCode != 200) return null;
+
+      // Reject up front when the server advertises a size over the cap.
+      final declared = response.contentLength;
+      if (declared != null && declared > maxBytes) return null;
+
+      final folder = await dir();
+      file = File(p.join(folder.path, filename));
+      sink = file.openWrite();
+
+      var received = 0;
+      await for (final chunk in response.stream) {
+        received += chunk.length;
+        if (received > maxBytes) {
+          await sink.close();
+          await file.delete().catchError((_) => file!);
+          return null;
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+
+      if (received == 0) {
+        await file.delete().catchError((_) => file!);
         return null;
       }
-      final folder = await dir();
-      final file = File(p.join(folder.path, filename));
-      await file.writeAsBytes(response.bodyBytes);
       return file.path;
     } catch (_) {
+      try {
+        await sink?.close();
+      } catch (_) {}
+      try {
+        if (file != null && await file.exists()) await file.delete();
+      } catch (_) {}
       return null;
+    } finally {
+      client.close();
     }
   }
 

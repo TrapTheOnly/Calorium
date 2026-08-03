@@ -20,8 +20,24 @@ class ImportedRecipeService {
   }) async {
     final db = await DatabaseService.instance.database;
 
-    double totalWeight = 0, cal = 0, fat = 0, carb = 0, prot = 0;
+    // The components table is keyed by (recipeId, componentId), so the same
+    // inventory food appearing on two ingredient lines (e.g. oil in a sauce and
+    // a garnish) must be merged first — otherwise the second insert violates the
+    // primary key and aborts the whole save. Sum amounts per food id, preserving
+    // first-seen order.
+    final merged = <int, ImportedComponent>{};
     for (final c in components) {
+      final id = c.food.id;
+      if (id == null) continue;
+      final existing = merged[id];
+      merged[id] = existing == null
+          ? c
+          : ImportedComponent(food: c.food, amount: existing.amount + c.amount);
+    }
+    final mergedComponents = merged.values.toList();
+
+    double totalWeight = 0, cal = 0, fat = 0, carb = 0, prot = 0;
+    for (final c in mergedComponents) {
       totalWeight += c.amount;
       cal += c.food.calories * c.amount / 100;
       fat += c.food.fat * c.amount / 100;
@@ -46,7 +62,7 @@ class ImportedRecipeService {
         'hasServing': 1,
       });
 
-      for (final c in components) {
+      for (final c in mergedComponents) {
         await txn.insert('components', {
           'recipeId': foodId,
           'componentId': c.food.id,

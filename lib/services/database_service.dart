@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'calories.db');
     return await openDatabase(
       path,
-      version: 8, // v8: normalize custom-recipe foods to one serving == 100 units
+      version: 9, // v9: track which logs were mirrored to Health Connect
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -52,6 +52,7 @@ class DatabaseService {
         portions REAL DEFAULT 1.0,
         date TEXT,
         loggedAt INTEGER,
+        syncedHealth INTEGER DEFAULT 0,
         FOREIGN KEY(foodId) REFERENCES foods(id)
       )
     ''');
@@ -222,6 +223,14 @@ class DatabaseService {
         "UPDATE logs SET amount = 100.0 * COALESCE(portions, 1) "
         "WHERE foodId IN (SELECT id FROM foods WHERE type = 'custom_recipe') "
         "AND (portions IS NULL OR portions > 0)",
+      );
+    }
+
+    if (oldVersion <= 8 && newVersion >= 9) {
+      // Marks which logs have already been mirrored to Health Connect so that
+      // re-syncing (and re-inserting) never writes the same meal twice.
+      await db.execute(
+        'ALTER TABLE logs ADD COLUMN syncedHealth INTEGER DEFAULT 0',
       );
     }
   }
