@@ -12,6 +12,8 @@ class LogEntry {
   final double? portions;
   final double? defaultPortionSize;
   final String? portionDescription;
+  final String? unit;
+  final bool? hasServing;
 
   LogEntry({
     this.id,
@@ -27,6 +29,8 @@ class LogEntry {
     this.portions = 1.0,
     this.defaultPortionSize,
     this.portionDescription,
+    this.unit,
+    this.hasServing,
   }) : loggedAt = loggedAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -58,6 +62,8 @@ class LogEntry {
       portions: map['portions'] ?? 1.0,
       defaultPortionSize: map['defaultPortionSize'],
       portionDescription: map['portionDescription'],
+      unit: map['unit'],
+      hasServing: map['hasServing'] == null ? null : (map['hasServing'] == 1),
     );
   }
 }

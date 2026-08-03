@@ -20,6 +20,29 @@ class SettingsService {
   static const String _lastAiAnalysisDateKey = 'last_ai_analysis_date';
   static const String _aiQuoteKey = 'ai_quote';
   static const String _weeklyAnalysisKey = 'weekly_analysis';
+  static const String _dailyReminderEnabledKey = 'daily_reminder_enabled';
+  static const String _weeklyReminderEnabledKey = 'weekly_reminder_enabled';
+
+  // Reminder preferences
+  static Future<bool> isDailyReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_dailyReminderEnabledKey) ?? true;
+  }
+
+  static Future<void> setDailyReminderEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_dailyReminderEnabledKey, enabled);
+  }
+
+  static Future<bool> isWeeklyReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_weeklyReminderEnabledKey) ?? true;
+  }
+
+  static Future<void> setWeeklyReminderEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_weeklyReminderEnabledKey, enabled);
+  }
 
   // API Key methods
   static Future<void> setGeminiApiKey(String apiKey) async {
@@ -224,6 +247,36 @@ class SettingsService {
     }
 
     return null;
+  }
+
+  static Future<void> clearDailyAiSuggestions(String date) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('${_dailyAiSuggestionsKey}_$date');
+    await prefs.remove('${_dailyAiSuggestionsKey}_full_$date');
+  }
+
+  /// Stores the full typed daily insight payload
+  /// (headline/focus/tips/action/quote).
+  static Future<void> setDailyAiInsights(
+    String date,
+    Map<String, dynamic> insights,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '${_dailyAiSuggestionsKey}_full_$date',
+      json.encode(insights),
+    );
+  }
+
+  static Future<Map<String, dynamic>?> getDailyAiInsights(String date) async {
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString('${_dailyAiSuggestionsKey}_full_$date');
+    if (s == null) return null;
+    try {
+      return json.decode(s) as Map<String, dynamic>;
+    } catch (e) {
+      return null;
+    }
   }
 
   static Future<void> setLastAiAnalysisDate(String date) async {

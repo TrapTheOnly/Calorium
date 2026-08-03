@@ -10,7 +10,14 @@ class Food {
   final double defaultPortionSize;
   final String portionDescription;
   final List<String> tags;
-  
+
+  /// Base measurement unit for this food: 'g' (weight) or 'ml' (volume).
+  final String unit;
+
+  /// Whether a distinct serving size is defined (and should be offered as a
+  /// logging option). When false, the food is only logged by its base unit.
+  final bool hasServing;
+
   Food({
     this.id,
     required this.name,
@@ -23,8 +30,12 @@ class Food {
     this.defaultPortionSize = 100.0,
     this.portionDescription = "100g",
     this.tags = const [],
+    this.unit = 'g',
+    this.hasServing = false,
   });
-  
+
+  bool get isLiquid => unit == 'ml';
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -38,9 +49,11 @@ class Food {
       'defaultPortionSize': defaultPortionSize,
       'portionDescription': portionDescription,
       'tags': tags.join(','),
+      'unit': unit,
+      'hasServing': hasServing ? 1 : 0,
     };
   }
-  
+
   factory Food.fromMap(Map<String, dynamic> map) {
     final tagsString = map['tags'] ?? '';
     List<String> tagsList = [];
@@ -58,7 +71,7 @@ class Food {
         tagsList = [];
       }
     }
-    
+
     return Food(
       id: map['id']?.toInt(),
       name: map['name']?.toString() ?? '',
@@ -71,9 +84,11 @@ class Food {
       defaultPortionSize: (map['defaultPortionSize'] ?? 100.0).toDouble(),
       portionDescription: map['portionDescription']?.toString() ?? "100g",
       tags: tagsList,
+      unit: map['unit']?.toString() ?? 'g',
+      hasServing: (map['hasServing'] ?? 0) == 1,
     );
   }
-  
+
   // Helper method to create a copy with updated tags
   Food copyWith({
     int? id,
@@ -87,6 +102,8 @@ class Food {
     double? defaultPortionSize,
     String? portionDescription,
     List<String>? tags,
+    String? unit,
+    bool? hasServing,
   }) {
     return Food(
       id: id ?? this.id,
@@ -100,6 +117,8 @@ class Food {
       defaultPortionSize: defaultPortionSize ?? this.defaultPortionSize,
       portionDescription: portionDescription ?? this.portionDescription,
       tags: tags ?? this.tags,
+      unit: unit ?? this.unit,
+      hasServing: hasServing ?? this.hasServing,
     );
   }
 }
