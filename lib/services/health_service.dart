@@ -1,7 +1,15 @@
+import 'dart:io' show Platform;
 import 'package:health/health.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/health_data.dart';
+
+/// A single body-weight reading (kg) sourced from Health Connect.
+class WeightPoint {
+  WeightPoint(this.date, this.kg);
+  final DateTime date;
+  final double kg;
+}
 
 class HealthService {
   static final HealthService _instance = HealthService._internal();
@@ -154,6 +162,14 @@ class HealthService {
         } catch (e) {
           debugPrint('Error requesting historical data access: $e');
         }
+
+        // Also request nutrition WRITE so logged meals are shared back to
+        // Health Connect for other apps (Google Health, etc.) to read.
+        try {
+          await requestNutritionWritePermission();
+        } catch (e) {
+          debugPrint('Error requesting nutrition write access: $e');
+        }
       }
       
       debugPrint('Permissions granted: $_hasPermissions');
@@ -179,25 +195,74 @@ class HealthService {
       debugPrint('Fetching health data for exact date: $startOfDay to $endOfDay');
 
       // Fetch health data points
-      final List<HealthDataPoint> healthDataPoints = await _health.getHealthDataFromTypes(
+      List<HealthDataPoint> healthDataPoints = await _health.getHealthDataFromTypes(
         types: _dataTypes,
         startTime: startOfDay,
         endTime: endOfDay,
       );
 
-      debugPrint('Found ${healthDataPoints.length} health data points for ${date.toIso8601String().split('T')[0]}');
-      
-      // Log each data point for detailed debugging
-      for (final point in healthDataPoints) {
-        final pointDate = point.dateFrom.toIso8601String().split('T')[0];
-        debugPrint('Data point: ${point.type} = ${point.value} from ${point.sourceName} on $pointDate');
+      // Remove exact duplicate records that the plugin may surface more than once.
+      try {
+        healthDataPoints = _health.removeDuplicates(healthDataPoints);
+      } catch (e) {
+        debugPrint('removeDuplicates failed: $e');
       }
 
-      return _processHealthData(healthDataPoints, date);
+      debugPrint('Found ${healthDataPoints.length} health data points for ${date.toIso8601String().split('T')[0]}');
+
+      // Steps: use Health Connect's aggregate total, which de-duplicates
+      // overlapping records written by multiple providers (e.g. Heytap Health
+      // + Google Fit both syncing into Health Connect). Falls back to the
+      // single-source heuristic in [_processHealthData] if unavailable.
+      int? aggregatedSteps;
+      try {
+        aggregatedSteps = await _health.getTotalStepsInInterval(startOfDay, endOfDay);
+        debugPrint('Aggregated steps (Health Connect): $aggregatedSteps');
+      } catch (e) {
+        debugPrint('getTotalStepsInInterval failed: $e');
+      }
+
+      return _processHealthData(healthDataPoints, date, aggregatedSteps: aggregatedSteps);
     } catch (e) {
       debugPrint('Error fetching health data: $e');
       return HealthData.empty(date: date);
     }
+  }
+
+  /// Picks the single provider ("source") that contributes the most energy for
+  /// the day. When several apps mirror the same data into Health Connect,
+  /// summing every source inflates the totals — so we attribute calories,
+  /// workouts and distance to one primary source instead of adding them all.
+  String? _pickPrimarySource(List<HealthDataPoint> points, String targetDateString) {
+    final Map<String, double> caloriesBySource = {};
+    for (final point in points) {
+      if (point.dateFrom.toIso8601String().split('T')[0] != targetDateString) {
+        continue;
+      }
+      if (point.type != HealthDataType.ACTIVE_ENERGY_BURNED &&
+          point.type != HealthDataType.TOTAL_CALORIES_BURNED) {
+        continue;
+      }
+      if (point.value is NumericHealthValue) {
+        final value = (point.value as NumericHealthValue).numericValue.toDouble();
+        caloriesBySource[point.sourceName] =
+            (caloriesBySource[point.sourceName] ?? 0) + value;
+      }
+    }
+
+    if (caloriesBySource.isEmpty) return null;
+
+    String? best;
+    double bestValue = -1;
+    caloriesBySource.forEach((source, value) {
+      if (value > bestValue) {
+        bestValue = value;
+        best = source;
+      }
+    });
+    debugPrint('Primary health source: $best (${bestValue.round()} kcal) '
+        'among ${caloriesBySource.keys.toList()}');
+    return best;
   }
 
   /// Get health data for today
@@ -205,8 +270,148 @@ class HealthService {
     return getHealthDataForDate(DateTime.now());
   }
 
-  /// Process raw health data points into structured HealthData
-  HealthData _processHealthData(List<HealthDataPoint> dataPoints, DateTime date) {
+  // ---------------------------------------------------------------------------
+  // Body weight (kept separate from the activity permission set so that reading
+  // weight is optional and doesn't disturb existing steps/energy permissions).
+
+  static const List<HealthDataType> _weightTypes = [HealthDataType.WEIGHT];
+
+  /// Ensures we can read body weight, requesting authorization lazily.
+  Future<bool> _ensureWeightAuth() async {
+    if (!_isConfigured) await initialize();
+    try {
+      final bool has = (await _health.hasPermissions(_weightTypes)) ?? false;
+      if (has) return true;
+      return await _health.requestAuthorization(
+        _weightTypes,
+        permissions: const [HealthDataAccess.READ],
+      );
+    } catch (e) {
+      debugPrint('Weight authorization error: $e');
+      return false;
+    }
+  }
+
+  /// Most recent body weight (kg) within [lookbackDays], or null if none.
+  Future<double?> getLatestWeightKg({int lookbackDays = 365}) async {
+    final series = await getWeightSeries(
+      DateTime.now().subtract(Duration(days: lookbackDays)),
+      DateTime.now(),
+    );
+    if (series.isEmpty) return null;
+    return series.last.kg;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Nutrition write — expose our logged meals to Health Connect so other apps
+  // (Google Health, etc.) can read the calories/macros we record.
+
+  static const List<HealthDataType> _nutritionTypes = [
+    HealthDataType.NUTRITION,
+  ];
+
+  /// Whether we already hold write access for nutrition.
+  Future<bool> hasNutritionWritePermission() async {
+    if (!_isConfigured) await initialize();
+    try {
+      return (await _health.hasPermissions(
+            _nutritionTypes,
+            permissions: const [HealthDataAccess.WRITE],
+          )) ??
+          false;
+    } catch (e) {
+      debugPrint('Nutrition write permission check failed: $e');
+      return false;
+    }
+  }
+
+  /// Prompts for write access to nutrition (call from a settings action).
+  Future<bool> requestNutritionWritePermission() async {
+    if (!_isConfigured) await initialize();
+    try {
+      return await _health.requestAuthorization(
+        _nutritionTypes,
+        permissions: const [HealthDataAccess.WRITE],
+      );
+    } catch (e) {
+      debugPrint('Nutrition write authorization error: $e');
+      return false;
+    }
+  }
+
+  /// Writes a single logged meal to Health Connect. No-ops silently when not on
+  /// mobile or when write permission hasn't been granted (so it never prompts
+  /// or throws on the logging hot path).
+  Future<bool> writeMeal({
+    required String name,
+    required double calories,
+    required double protein,
+    required double carbs,
+    required double fat,
+    required DateTime time,
+  }) async {
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    try {
+      if (!_isConfigured) await initialize();
+      if (!await hasNutritionWritePermission()) return false;
+      return await _health.writeMeal(
+        mealType: MealType.UNKNOWN,
+        startTime: time,
+        endTime: time.add(const Duration(minutes: 1)),
+        name: name,
+        caloriesConsumed: calories,
+        protein: protein,
+        carbohydrates: carbs,
+        fatTotal: fat,
+        recordingMethod: RecordingMethod.manual,
+      );
+    } catch (e) {
+      debugPrint('writeMeal failed: $e');
+      return false;
+    }
+  }
+
+  /// Body-weight readings (kg) within [start, end], sorted oldest first.
+  Future<List<WeightPoint>> getWeightSeries(
+    DateTime start,
+    DateTime end,
+  ) async {
+    if (!await _ensureWeightAuth()) return [];
+    try {
+      var points = await _health.getHealthDataFromTypes(
+        types: _weightTypes,
+        startTime: start,
+        endTime: end,
+      );
+      try {
+        points = _health.removeDuplicates(points);
+      } catch (_) {}
+      final result = <WeightPoint>[];
+      for (final p in points) {
+        if (p.value is NumericHealthValue) {
+          final kg = (p.value as NumericHealthValue).numericValue.toDouble();
+          if (kg > 0) result.add(WeightPoint(p.dateFrom, kg));
+        }
+      }
+      result.sort((a, b) => a.date.compareTo(b.date));
+      return result;
+    } catch (e) {
+      debugPrint('Error fetching weight series: $e');
+      return [];
+    }
+  }
+
+  /// Process raw health data points into structured HealthData.
+  ///
+  /// [aggregatedSteps] is Health Connect's de-duplicated step total; when
+  /// provided it is used verbatim. Calories, workouts and distance are only
+  /// counted from a single primary source to avoid double-counting when
+  /// multiple providers mirror the same activity into Health Connect.
+  HealthData _processHealthData(
+    List<HealthDataPoint> dataPoints,
+    DateTime date, {
+    int? aggregatedSteps,
+  }) {
     double totalWorkoutTime = 0;
     double totalCaloriesBurned = 0;
     int totalSteps = 0;
@@ -218,8 +423,13 @@ class HealthService {
     // Strict date filtering - only include data from the exact target date
     final targetDateString = date.toIso8601String().split('T')[0];
 
-    // Group calories entries by time to potentially reconstruct workout sessions
-    List<HealthDataPoint> caloriesEntries = [];
+    // Attribute energy/workout/distance to a single provider to prevent
+    // multi-source inflation (e.g. Heytap Health + Google Fit).
+    final String? primarySource = _pickPrimarySource(dataPoints, targetDateString);
+
+    // Track steps per source so we can take the largest single source and avoid
+    // double-counting the same walk mirrored by several apps.
+    final Map<String, int> stepsBySource = {};
 
     // Process each data point with strict date filtering
     for (final point in dataPoints) {
@@ -230,46 +440,43 @@ class HealthService {
         debugPrint('Skipping data point from different date: $pointDateString (target: $targetDateString)');
         continue;
       }
-      
-      debugPrint('Processing point: ${point.type} - ${point.value} - Source: ${point.sourceName} - Date: $pointDateString');
-      
+
+      // For everything except steps (handled via aggregate), restrict to the
+      // primary source so mirrored records are not counted twice.
+      final bool isPrimary = primarySource == null || point.sourceName == primarySource;
+
       switch (point.type) {
         case HealthDataType.STEPS:
           if (point.value is NumericHealthValue) {
-            final value = (point.value as NumericHealthValue).numericValue;
-            totalSteps += value.round();
-            debugPrint('Added steps: $value, total: $totalSteps');
+            final value = (point.value as NumericHealthValue).numericValue.round();
+            stepsBySource[point.sourceName] =
+                (stepsBySource[point.sourceName] ?? 0) + value;
           }
           break;
         
         case HealthDataType.ACTIVE_ENERGY_BURNED:
-          if (point.value is NumericHealthValue) {
+          if (isPrimary && point.value is NumericHealthValue) {
             final value = (point.value as NumericHealthValue).numericValue;
             totalCaloriesBurned += value;
-            debugPrint('Added active calories: $value, total: $totalCaloriesBurned');
           }
           break;
         
         case HealthDataType.TOTAL_CALORIES_BURNED:
-          if (point.value is NumericHealthValue) {
+          if (isPrimary && point.value is NumericHealthValue) {
             final value = (point.value as NumericHealthValue).numericValue;
-            // Always add total calories (Samsung Health uses multiple entries for different activities)
             totalCaloriesBurned += value;
-            caloriesEntries.add(point); // Store for potential workout reconstruction
-            debugPrint('Added total calories: $value, total: $totalCaloriesBurned');
           }
           break;
         
         case HealthDataType.DISTANCE_DELTA:
-          if (point.value is NumericHealthValue) {
+          if (isPrimary && point.value is NumericHealthValue) {
             final value = (point.value as NumericHealthValue).numericValue;
             totalDistance += value;
-            debugPrint('Added distance: ${(value/1000).toStringAsFixed(2)} km, total: ${(totalDistance/1000).toStringAsFixed(2)} km');
           }
           break;
         
         case HealthDataType.WORKOUT:
-          if (point.value is WorkoutHealthValue) {
+          if (isPrimary && point.value is WorkoutHealthValue) {
             final workout = point.value as WorkoutHealthValue;
             final duration = point.dateTo.difference(point.dateFrom).inMinutes.toDouble();
             final calories = workout.totalEnergyBurned?.toDouble() ?? 0;
@@ -284,8 +491,6 @@ class HealthService {
             
             workoutSessions.add(session);
             totalWorkoutTime += duration;
-            
-            debugPrint('Added workout: ${session.type}, duration: $duration min, calories: $calories');
           }
           break;
         
@@ -294,11 +499,21 @@ class HealthService {
       }
     }
 
-    // If no explicit workout sessions but we have calories entries, estimate workout time
-    if (workoutSessions.isEmpty && caloriesEntries.isNotEmpty) {
-      totalWorkoutTime = _estimateWorkoutTimeFromCalories(caloriesEntries);
-      debugPrint('Estimated workout time from calories entries: $totalWorkoutTime minutes');
+    // Resolve steps by taking the single largest source. Several apps mirror
+    // the same walk into Health Connect (e.g. OnePlus Health + Google/Strava),
+    // and even Health Connect's own aggregate can sum non-overlapping mirrored
+    // records — inflating the count. Trusting one source matches what each
+    // individual app reports. Falls back to the aggregate only if we somehow
+    // got no per-source step records.
+    if (stepsBySource.isNotEmpty) {
+      totalSteps = stepsBySource.values.reduce((a, b) => a > b ? a : b);
+    } else if (aggregatedSteps != null && aggregatedSteps > 0) {
+      totalSteps = aggregatedSteps;
     }
+
+    // Active minutes come ONLY from real workout sessions (single primary
+    // source). We deliberately do not estimate them from calorie-burn records,
+    // which spanned the whole day and produced bogus "active minutes".
 
     final healthData = HealthData(
       totalWorkoutTime: totalWorkoutTime,
@@ -311,23 +526,6 @@ class HealthService {
     debugPrint('Final health data for $targetDateString: Steps: $totalSteps, Calories: ${totalCaloriesBurned.round()}, Workout time: $totalWorkoutTime min, Sessions: ${workoutSessions.length}, Distance: ${(totalDistance/1000).toStringAsFixed(2)} km');
     
     return healthData;
-  }
-
-  /// Estimate workout time from calories entries (Samsung Health pattern)
-  double _estimateWorkoutTimeFromCalories(List<HealthDataPoint> caloriesEntries) {
-    if (caloriesEntries.isEmpty) return 0;
-    
-    // Sort by start time
-    caloriesEntries.sort((a, b) => a.dateFrom.compareTo(b.dateFrom));
-    
-    double totalMinutes = 0;
-    
-    for (final entry in caloriesEntries) {
-      final duration = entry.dateTo.difference(entry.dateFrom).inMinutes.toDouble();
-      totalMinutes += duration;
-    }
-    
-    return totalMinutes;
   }
 
   /// Convert workout activity type to readable name

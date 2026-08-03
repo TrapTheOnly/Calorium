@@ -37,8 +37,8 @@ class FastingOverviewCard extends StatelessWidget {
         final actionLabel = isFasting ? 'Fast ends in' : 'Eating ends in';
         final streakLabel = streakDays == 1 ? 'day' : 'days';
 
-        final cardBackground = colorScheme.primaryContainer;
-        final onCard = colorScheme.onPrimaryContainer;
+        final cardBackground = colorScheme.surfaceContainerLow;
+        final onCard = colorScheme.onSurface;
         final dividerColor = onCard.withOpacity(
           colorScheme.brightness == Brightness.dark ? 0.18 : 0.2,
         );
@@ -48,20 +48,11 @@ class FastingOverviewCard extends StatelessWidget {
         final content = Container(
           decoration: BoxDecoration(
             color: cardBackground,
-            borderRadius: BorderRadius.circular(20 * scale),
-            boxShadow: [
-              BoxShadow(
-                color: colorScheme.shadow.withOpacity(
-                  colorScheme.brightness == Brightness.dark ? 0.35 : 0.12,
-                ),
-                blurRadius: 16 * scale,
-                offset: Offset(0, 6 * scale),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(12 * scale),
           ),
           padding: EdgeInsets.symmetric(
-            horizontal: 20 * scale,
-            vertical: 18 * scale,
+            horizontal: 14 * scale,
+            vertical: 12 * scale,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,11 +61,11 @@ class FastingOverviewCard extends StatelessWidget {
                 'Intermittent Fasting',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  fontSize: 20,
+                  fontSize: 16,
                   color: onCard,
                 ),
               ),
-              SizedBox(height: 12 * scale),
+              SizedBox(height: 8 * scale),
               _buildPhaseBanner(
                 phaseLabel: phaseLabel,
                 isFasting: isFasting,
