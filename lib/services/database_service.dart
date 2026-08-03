@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'calories.db');
     return await openDatabase(
       path,
-      version: 5, // Increased version for fasting timestamps
+      version: 8, // v8: normalize custom-recipe foods to one serving == 100 units
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -38,7 +38,9 @@ class DatabaseService {
         isArchived INTEGER DEFAULT 0,
         defaultPortionSize REAL DEFAULT 100.0,
         portionDescription TEXT DEFAULT '100g',
-        tags TEXT DEFAULT ''
+        tags TEXT DEFAULT '',
+        unit TEXT DEFAULT 'g',
+        hasServing INTEGER DEFAULT 0
       )
     ''');
 
@@ -89,7 +91,34 @@ class DatabaseService {
         FOREIGN KEY (foodId) REFERENCES foods (id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute(_createImportedRecipeMetaSql);
   }
+
+  /// Metadata for recipes imported from a shared video link.
+  ///
+  /// The ingredients + macros live in the linked compound `foods` row and the
+  /// `components` table (so nutrition recomputes from live inventory); this
+  /// table adds the video, source link, instructions, and recipe metadata.
+  static const String _createImportedRecipeMetaSql = '''
+    CREATE TABLE imported_recipe_meta (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      foodId INTEGER NOT NULL,
+      platform TEXT DEFAULT '',
+      sourceUrl TEXT DEFAULT '',
+      videoPath TEXT DEFAULT '',
+      thumbnailPath TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      instructions TEXT NOT NULL,
+      servings INTEGER DEFAULT 1,
+      prepTimeMinutes INTEGER DEFAULT 0,
+      cookTimeMinutes INTEGER DEFAULT 0,
+      difficulty TEXT DEFAULT 'medium',
+      tags TEXT DEFAULT '',
+      createdAt INTEGER NOT NULL,
+      FOREIGN KEY (foodId) REFERENCES foods (id) ON DELETE CASCADE
+    )
+  ''';
 
   Future<void> _upgradeDatabase(
     Database db,
@@ -151,6 +180,49 @@ class DatabaseService {
         SET loggedAt = CAST(strftime('%s', date || ' 12:00:00') AS INTEGER) * 1000
         WHERE loggedAt IS NULL AND date IS NOT NULL
       ''');
+    }
+
+    if (oldVersion <= 5 && newVersion >= 6) {
+      await db.execute("ALTER TABLE foods ADD COLUMN unit TEXT DEFAULT 'g'");
+      await db.execute(
+        'ALTER TABLE foods ADD COLUMN hasServing INTEGER DEFAULT 0',
+      );
+      // Infer base unit for existing rows from the portion description.
+      await db.execute(
+        "UPDATE foods SET unit = 'ml' WHERE lower(portionDescription) LIKE '%ml%'",
+      );
+      // Treat any food with a distinct portion size as having a serving.
+      await db.execute(
+        'UPDATE foods SET hasServing = 1 '
+        'WHERE defaultPortionSize IS NOT NULL AND defaultPortionSize != 100.0',
+      );
+    }
+
+    if (oldVersion <= 6 && newVersion >= 7) {
+      await db.execute(_createImportedRecipeMetaSql);
+    }
+
+    if (oldVersion <= 7 && newVersion >= 8) {
+      // Normalize custom-recipe foods to the canonical model: one serving == 100
+      // nominal units, with per-serving nutrition stored in the per-100 columns.
+      // Older AI recipes stored a garbage defaultPortionSize (== per-serving
+      // calories), which inflated calories when logged from Inventory, while
+      // the recipe detail screen always stored amount=100 (only 1 serving).
+      await db.execute(
+        "UPDATE foods SET defaultPortionSize = 100.0, hasServing = 1 "
+        "WHERE type = 'custom_recipe'",
+      );
+      await db.execute('UPDATE custom_recipes SET defaultPortionSize = 100.0');
+      // Rebuild each historical recipe log's amount from its stored serving
+      // count (`portions`), which equals the servings for BOTH past producers
+      // (detail path stored portions=servings; inventory/LogEntryScreen stored
+      // portions = baseAmount/defaultPortionSize = servings). Keyed off
+      // `portions` (never the old amount), so this is idempotent.
+      await db.execute(
+        "UPDATE logs SET amount = 100.0 * COALESCE(portions, 1) "
+        "WHERE foodId IN (SELECT id FROM foods WHERE type = 'custom_recipe') "
+        "AND (portions IS NULL OR portions > 0)",
+      );
     }
   }
 }

@@ -1,455 +1,246 @@
 import 'package:flutter/material.dart';
 import '../models/health_data.dart';
-import '../services/health_service.dart';
+import '../utils/app_layout.dart';
 
 class HealthDataCard extends StatelessWidget {
   final HealthData healthData;
   final bool showWorkoutSessions;
 
   const HealthDataCard({
-    Key? key,
+    super.key,
     required this.healthData,
     this.showWorkoutSessions = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          borderRadius: BorderRadius.circular(20)
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppLayout.radius),
+      ),
+      padding: const EdgeInsets.all(AppLayout.cardPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Health & fitness',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              color: scheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              // Header with icon and title
-              Row(
-                children: [
-                    Text(
-                    'Health & Fitness',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 20,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ]
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Main metrics in a beautiful grid
-              Row(
-                children: [
-                  // Calories burned - same size as active time
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.local_fire_department_rounded,
-                                color: Colors.orange.shade300,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Burned',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${healthData.totalCaloriesBurned.round()}',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                          Text(
-                            'kCal',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(width: 12),
-                  
-                  // Active time
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.timer_outlined,
-                                color: Colors.blue.shade300,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Active',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${healthData.totalWorkoutTime.round()}',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                          Text(
-                            'min',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 12),
-              
-              // Steps - full width with stylish design
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.2),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade400.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.directions_walk_rounded,
-                        color: Colors.green.shade300,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Steps Today',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.8),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${healthData.totalSteps}',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Progress indicator
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.trending_up_rounded,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ],
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.local_fire_department_rounded,
+                  iconColor: scheme.primary,
+                  label: 'Burned',
+                  value: '${healthData.totalCaloriesBurned.round()}',
+                  unit: 'kcal',
                 ),
               ),
-              
-              if (showWorkoutSessions && healthData.workoutSessions.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                _buildWorkoutSessions(context),
-              ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.timer_outlined,
+                  iconColor: scheme.tertiary,
+                  label: 'Active',
+                  value: '${healthData.totalWorkoutTime.round()}',
+                  unit: 'min',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricTile(
+                  icon: Icons.directions_walk_rounded,
+                  iconColor: scheme.secondary,
+                  label: 'Steps',
+                  value: '${healthData.totalSteps}',
+                  unit: 'today',
+                ),
+              ),
             ],
           ),
-        ),
+          if (showWorkoutSessions && healthData.workoutSessions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildWorkoutSessions(context),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildWorkoutSessions(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Recent Workouts',
           style: TextStyle(
-            fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
+            fontSize: 13,
+            color: scheme.onPrimaryContainer,
           ),
         ),
-        const SizedBox(height: 12),
-        ...healthData.workoutSessions.take(3).map((session) => 
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
+        const SizedBox(height: 6),
+        ...healthData.workoutSessions.take(3).map((session) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '${session.type} · ${session.duration.round()} min',
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onPrimaryContainer.withOpacity(0.8),
+              ),
             ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: _getWorkoutColor(session.type).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    _getWorkoutIcon(session.type),
-                    color: _getWorkoutColor(session.type),
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        session.type,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        '${HealthService.formatWorkoutTime(session.duration)} • ${HealthService.formatCalories(session.caloriesBurned)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ).toList(),
+          );
+        }),
       ],
     );
   }
-
-  IconData _getWorkoutIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'running':
-        return Icons.directions_run_rounded;
-      case 'walking':
-        return Icons.directions_walk_rounded;
-      case 'cycling':
-        return Icons.directions_bike_rounded;
-      case 'swimming':
-        return Icons.pool_rounded;
-      case 'strength training':
-        return Icons.fitness_center_rounded;
-      case 'yoga':
-        return Icons.self_improvement_rounded;
-      case 'dancing':
-        return Icons.music_note_rounded;
-      case 'hiking':
-        return Icons.terrain_rounded;
-      case 'boxing':
-        return Icons.sports_martial_arts_rounded;
-      case 'tennis':
-        return Icons.sports_tennis_rounded;
-      case 'basketball':
-        return Icons.sports_basketball_rounded;
-      case 'football':
-        return Icons.sports_soccer_rounded;
-      default:
-        return Icons.fitness_center_rounded;
-    }
-  }
-
-  Color _getWorkoutColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'running':
-        return Colors.orange;
-      case 'walking':
-        return Colors.blue;
-      case 'cycling':
-        return Colors.green;
-      case 'swimming':
-        return Colors.cyan;
-      case 'strength training':
-        return Colors.purple;
-      case 'yoga':
-        return Colors.pink;
-      case 'dancing':
-        return Colors.indigo;
-      case 'hiking':
-        return Colors.brown;
-      case 'boxing':
-        return Colors.red;
-      case 'tennis':
-        return Colors.yellow;
-      case 'basketball':
-        return Colors.deepOrange;
-      case 'football':
-        return Colors.lightGreen;
-      default:
-        return Colors.grey;
-    }
-  }
 }
 
-class HealthPermissionCard extends StatelessWidget {
-  final VoidCallback onRequestPermissions;
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
 
-  const HealthPermissionCard({
-    Key? key,
-    required this.onRequestPermissions,
-  }) : super(key: key);
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String value;
+  final String unit;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final onCard = scheme.onSurface;
+
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  Icons.health_and_safety_rounded,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Connect Health Data',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Allow access to health data to see your workout time, calories burned, and step count',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: onRequestPermissions,
-                  icon: const Icon(Icons.security_rounded),
-                  label: const Text('Grant Permissions'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
+              Icon(icon, color: iconColor, size: 16),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: onCard.withOpacity(0.8),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: onCard,
+            ),
+          ),
+          Text(
+            unit,
+            style: TextStyle(fontSize: 11, color: onCard.withOpacity(0.7)),
+          ),
+        ],
       ),
     );
   }
-} 
+}
+
+/// Compact horizontal banner instead of a large permission promo card.
+class HealthPermissionBanner extends StatelessWidget {
+  final VoidCallback onRequestPermissions;
+  final VoidCallback? onDismiss;
+
+  const HealthPermissionBanner({
+    super.key,
+    required this.onRequestPermissions,
+    this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(AppLayout.radius),
+        border: Border.all(color: scheme.outline.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.health_and_safety_outlined, color: scheme.primary, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connect health data',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                Text(
+                  'Steps, burned calories, workout time',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurface.withOpacity(0.65),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onRequestPermissions,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Grant'),
+          ),
+          if (onDismiss != null)
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              visualDensity: VisualDensity.compact,
+              onPressed: onDismiss,
+              tooltip: 'Dismiss',
+            ),
+        ],
+      ),
+    );
+  }
+}

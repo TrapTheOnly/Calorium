@@ -7,84 +7,10 @@ class NutritionAnalysisService {
   static const String _apiHost = 'generativelanguage.googleapis.com';
   static const String _pathPrefix = '/v1beta/models/';
   static const String _generateContentSuffix = ':generateContent';
-  static Never _handleEmptyCandidates(
-    Map<String, dynamic> data,
-    String context,
-  ) {
-    final promptFeedback = data['promptFeedback'];
-    if (promptFeedback is Map<String, dynamic>) {
-      print(
-        'Gemini prompt feedback ($context): ${json.encode(promptFeedback)}',
-      );
-      final blockReason = promptFeedback['blockReason'];
-      if (blockReason is String && blockReason.isNotEmpty) {
-        throw Exception('Gemini blocked the request: $blockReason');
-      }
-    }
-    throw Exception('No response from AI');
-  }
-
-  static String _extractResponseText(
-    Map<String, dynamic> data,
-    String context,
-  ) {
-    final candidates = data['candidates'];
-    if (candidates == null || candidates is! List || candidates.isEmpty) {
-      _handleEmptyCandidates(data, context);
-    }
-
-    final firstCandidate = candidates[0];
-    if (firstCandidate == null || firstCandidate is! Map<String, dynamic>) {
-      throw Exception('Invalid candidate structure');
-    }
-
-    final finishReason = firstCandidate['finishReason'];
-    if (finishReason is String && finishReason.toUpperCase() == 'SAFETY') {
-      _handleEmptyCandidates(data, context);
-    }
-
-    final content = firstCandidate['content'];
-    if (content == null || content is! Map<String, dynamic>) {
-      throw Exception('No content in candidate');
-    }
-
-    final parts = content['parts'];
-    if (parts == null || parts is! List || parts.isEmpty) {
-      if (finishReason == 'MAX_TOKENS') {
-        throw Exception(
-          'Gemini stopped before returning content because the response hit the maximum output token limit. Try increasing maxOutputTokens or shortening the prompt.',
-        );
-      }
-      if (finishReason is String && finishReason.isNotEmpty) {
-        throw Exception(
-          'Gemini returned no content (finishReason: $finishReason)',
-        );
-      }
-      throw Exception('No parts in content');
-    }
-
-    final firstPart = parts[0];
-    if (firstPart == null || firstPart is! Map<String, dynamic>) {
-      throw Exception('Invalid part structure');
-    }
-
-    final text = firstPart['text'];
-    if (text == null || text is! String) {
-      throw Exception('No text in response part');
-    }
-
-    if (finishReason == 'MAX_TOKENS') {
-      print(
-        'Gemini truncated the response for $context because it hit the maximum output token limit. Continuing with partial content.',
-      );
-    }
-
-    return text;
-  }
 
   static Future<Uri> _buildRequestUri(
     String apiKey, {
-    String fallbackModel = 'gemini-2.0-flash',
+    String fallbackModel = 'gemini-1.5-flash-latest',
   }) async {
     final model = await SettingsService.getGeminiModel(
       fallbackModel: fallbackModel,
@@ -185,7 +111,38 @@ class NutritionAnalysisService {
         });
       }
 
+      // Remaining vs targets — the most useful signal for actionable tips.
+      final proteinTarget = macroTargets?['protein'];
+      final carbsTarget = macroTargets?['carbs'];
+      final fatTarget = macroTargets?['fat'];
+      final calorieTargetD = macroTargets != null
+          ? (proteinTarget! * 4 + carbsTarget! * 4 + fatTarget! * 9)
+          : null;
+      String remain(double target, double have) {
+        final r = target - have;
+        return r >= 0 ? '${r.round()}g left' : '${(-r).round()}g over';
+      }
+
+      final gapsSection = macroTargets != null
+          ? 'REMAINING VS TARGET (today):\n'
+              '- Calories: ${(calorieTargetD! - totalCalories).round()} kcal '
+              '${calorieTargetD - totalCalories >= 0 ? 'left' : 'over'}\n'
+              '- Protein: ${remain(proteinTarget!, totalProtein)}\n'
+              '- Carbs: ${remain(carbsTarget!, totalCarbs)}\n'
+              '- Fat: ${remain(fatTarget!, totalFat)}'
+          : 'Daily targets not set.';
+
+      final hourNow = DateTime.now().hour;
+      final mealsLeft = hourNow < 11
+          ? 'most of the day remains (breakfast/lunch/dinner ahead)'
+          : hourNow < 15
+              ? 'lunch and dinner likely remain'
+              : hourNow < 20
+                  ? 'dinner likely remains'
+                  : 'the day is nearly over';
+
       // Prepare the AI analysis request
+      final varietySeed = DateTime.now().millisecondsSinceEpoch;
       final requestBody = {
         "contents": [
           {
@@ -209,52 +166,47 @@ TODAY'S INTAKE ($date):
 - Carbohydrates: ${totalCarbs.round()}g  
 - Fat: ${totalFat.round()}g
 
+$gapsSection
+
+TIME CONTEXT: It is ${hourNow}:00 — $mealsLeft.
+
 FOODS CONSUMED TODAY:
 ${foodDetails.map((food) => '• ${food['name']}: ${food['amount']}g (${food['calories']}kcal, ${food['protein']}g protein, ${food['carbs']}g carbs, ${food['fat']}g fat)').join('\n')}
 
 RECENT PERFORMANCE (last 3 days average):
 ${recentDaysData.isNotEmpty ? '- Average Calories: ${(recentDaysData.map((d) => d['calories']!).reduce((a, b) => a + b) / recentDaysData.length).round()}kcal\n- Average Protein: ${(recentDaysData.map((d) => d['protein']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g\n- Average Carbs: ${(recentDaysData.map((d) => d['carbs']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g\n- Average Fat: ${(recentDaysData.map((d) => d['fat']!).reduce((a, b) => a + b) / recentDaysData.length).round()}g' : 'No recent data available'}
 
-TASK: Analyze this nutrition data and respond with ONLY a valid JSON object in this exact format:
+TASK: Respond with ONLY a valid JSON object in this exact format:
 
 {
-  "suggestions": [
-    "Specific actionable nutrition tip #1",
-    "Specific actionable nutrition tip #2", 
-    "Specific actionable nutrition tip #3",
-    "Specific actionable nutrition tip #4",
-    "Specific actionable nutrition tip #5"
+  "headline": "One short line summarizing where today's intake stands vs targets.",
+  "focus": "The single most important thing to fix right now, specific and grounded in the remaining-vs-target numbers and the time of day.",
+  "tips": [
+    "Specific, quantified tip #1 (e.g. 'Add 150g Greek yogurt for +15g protein').",
+    "Specific, quantified tip #2.",
+    "Specific, quantified tip #3."
   ],
-  "motivationalQuote": "Personalized motivational quote based on their recent performance and goals"
+  "action": {
+    "title": "One concrete food to add now, with amount and its macro effect (e.g. '2 eggs → +12g protein, 140 kcal')."
+  },
+  "quote": "Short, personal, encouraging line referencing their actual day/goals."
 }
 
-GUIDELINES for suggestions:
-1. Be specific and actionable (e.g., "Add 150g Greek yogurt for 20g more protein" not "eat more protein")
-2. Consider their goals, activity level, and current intake vs targets
-3. Address specific deficiencies or excesses you notice
-4. Include food timing suggestions if relevant
-5. Be encouraging but realistic
-6. Focus on nutrition quality, not just quantities
-7. Consider food variety and micronutrients
-8. Each suggestion should be unique and valuable
-
-GUIDELINES for motivational quote:
-1. Make it personal to their recent performance 
-2. Acknowledge their progress or effort
-3. Keep it encouraging and forward-looking
-4. Reference their specific goals
-5. Keep it concise (1-2 sentences)
-6. Make it feel genuine, not generic
-
-Remember: Respond with ONLY the JSON object, no additional text.
+GUIDELINES:
+1. Ground EVERYTHING in the remaining-vs-target numbers and the time of day — if protein is short and dinner remains, say so.
+2. Be specific and quantified (amounts + macro deltas), never generic ("eat more protein" is banned).
+3. If they are over on calories, focus tips on lighter choices instead of adding food.
+4. "focus" must be the ONE highest-impact change; "action" must be a single realistic food to add (or a swap if they're over).
+5. Vary the angle day to day: rotate protein timing, fibre, micronutrients, hydration, meal composition. (variety seed: $varietySeed)
+6. Keep each field concise. Respond with ONLY the JSON object, no extra text.
 """,
               },
             ],
           },
         ],
         "generationConfig": {
-          "temperature": 0.7,
-          "topK": 40,
+          "temperature": 1.0,
+          "topK": 64,
           "topP": 0.95,
           "maxOutputTokens": 1000,
         },
@@ -263,7 +215,7 @@ Remember: Respond with ONLY the JSON object, no additional text.
       // Make the API request
       final requestUri = await _buildRequestUri(
         apiKey,
-        fallbackModel: 'gemini-2.0-flash',
+        fallbackModel: 'gemini-1.5-flash-latest',
       );
 
       final response = await http.post(
@@ -274,49 +226,54 @@ Remember: Respond with ONLY the JSON object, no additional text.
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = _extractResponseText(data, 'daily nutrition analysis');
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
 
-        try {
-          // Clean the response
-          String cleanedText = text.trim();
+        if (text != null) {
+          try {
+            // Clean the response
+            String cleanedText = text.trim();
 
-          // Remove markdown code block markers if present
-          if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.substring(7);
-          } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.substring(3);
+            // Remove markdown code block markers if present
+            if (cleanedText.startsWith('```json')) {
+              cleanedText = cleanedText.substring(7);
+            } else if (cleanedText.startsWith('```')) {
+              cleanedText = cleanedText.substring(3);
+            }
+
+            if (cleanedText.endsWith('```')) {
+              cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+            }
+
+            cleanedText = cleanedText.trim();
+
+            final analysisResult =
+                json.decode(cleanedText) as Map<String, dynamic>;
+
+            // Accept the new typed schema (headline/focus/tips/action/quote)
+            // and gracefully fall back to the legacy suggestions/quote shape.
+            final tips = (analysisResult['tips'] as List?)?.cast<String>() ??
+                (analysisResult['suggestions'] as List?)?.cast<String>();
+            final quote = (analysisResult['quote'] ??
+                analysisResult['motivationalQuote']) as String?;
+
+            if (tips != null && tips.isNotEmpty) {
+              // Persist the full typed payload plus back-compat fields.
+              await SettingsService.setDailyAiInsights(date, analysisResult);
+              await SettingsService.setDailyAiSuggestions(date, tips);
+              if (quote != null) await SettingsService.setAiQuote(quote);
+              await SettingsService.setLastAiAnalysisDate(date);
+
+              return analysisResult;
+            } else {
+              throw Exception('Invalid response structure from AI');
+            }
+          } catch (e) {
+            print('Error parsing AI analysis response: $e');
+            print('AI Response: $text');
+            throw Exception('Invalid response format from AI: $e');
           }
-
-          if (cleanedText.endsWith('```')) {
-            cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-          }
-
-          cleanedText = cleanedText.trim();
-
-          final analysisResult = json.decode(cleanedText);
-
-          // Validate the response structure
-          if (analysisResult['suggestions'] is List &&
-              analysisResult['motivationalQuote'] is String &&
-              (analysisResult['suggestions'] as List).length == 5) {
-            // Store the suggestions and quote
-            await SettingsService.setDailyAiSuggestions(
-              date,
-              (analysisResult['suggestions'] as List).cast<String>(),
-            );
-            await SettingsService.setAiQuote(
-              analysisResult['motivationalQuote'],
-            );
-            await SettingsService.setLastAiAnalysisDate(date);
-
-            return analysisResult;
-          } else {
-            throw Exception('Invalid response structure from AI');
-          }
-        } catch (e) {
-          print('Error parsing AI analysis response: $e');
-          print('AI Response: $text');
-          throw Exception('Invalid response format from AI: $e');
+        } else {
+          throw Exception('No response from AI');
         }
       } else {
         final errorData = json.decode(response.body);
@@ -394,6 +351,56 @@ Remember: Respond with ONLY the JSON object, no additional text.
         });
       }
 
+      // Compute deterministic stats here so the model only INTERPRETS them
+      // (it must never invent the numbers — that made the old report feel
+      // random). Averages are over logged days only.
+      final logged =
+          weeklyData.where((d) => (d['foodsCount'] as int) > 0).toList();
+      final loggedN = logged.length;
+      double avgOf(String key) => loggedN == 0
+          ? 0
+          : logged.map((d) => (d[key] as num).toDouble()).reduce((a, b) => a + b) /
+              loggedN;
+      final avgCal = avgOf('calories');
+      final avgProt = avgOf('protein');
+      final avgCarb = avgOf('carbs');
+      final avgFat = avgOf('fat');
+
+      final proteinTarget = macroTargets?['protein'];
+      final calorieTarget = macroTargets != null
+          ? (macroTargets['protein']! * 4 +
+              macroTargets['carbs']! * 4 +
+              macroTargets['fat']! * 9)
+          : null;
+      final proteinHits = proteinTarget == null
+          ? 0
+          : logged.where((d) => (d['protein'] as num) >= proteinTarget).length;
+      final calorieOnTarget = calorieTarget == null
+          ? 0
+          : logged
+              .where((d) =>
+                  (d['calories'] as num) >= calorieTarget * 0.9 &&
+                  (d['calories'] as num) <= calorieTarget * 1.1)
+              .length;
+
+      final pK = logged.fold<double>(0, (s, d) => s + (d['protein'] as num) * 4);
+      final cK = logged.fold<double>(0, (s, d) => s + (d['carbs'] as num) * 4);
+      final fK = logged.fold<double>(0, (s, d) => s + (d['fat'] as num) * 9);
+      final tK = pK + cK + fK;
+      String macroPct(double x) => tK <= 0 ? '0' : ((x / tK) * 100).round().toString();
+
+      final foodCounts = <String, int>{};
+      for (final d in weeklyData) {
+        for (final f in (d['foods'] as List)) {
+          foodCounts[f as String] = (foodCounts[f] ?? 0) + 1;
+        }
+      }
+      final topFoods = (foodCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value)))
+          .take(6)
+          .map((e) => '${e.key} (${e.value}x)')
+          .join(', ');
+
       // Prepare the weekly analysis request
       final requestBody = {
         "contents": [
@@ -401,54 +408,42 @@ Remember: Respond with ONLY the JSON object, no additional text.
             "parts": [
               {
                 "text": """
-You are a professional nutritionist providing a comprehensive weekly nutrition analysis.
+You are a sharp, supportive nutrition coach. You are given ALREADY-COMPUTED weekly statistics. Do NOT recompute or contradict them — interpret them and give grounded, specific advice.
 
 USER PROFILE:
-- Age: $age years
-- Sex: $sex
-- Weight: ${weight}kg
-- Height: ${height}cm
-- Activity Level: $activityLevel
-- Goals: $goals
-- Daily Targets: ${macroTargets != null ? 'Protein: ${macroTargets['protein']}g, Carbs: ${macroTargets['carbs']}g, Fat: ${macroTargets['fat']}g' : 'Not set'}
+- Age: $age, Sex: $sex, Weight: ${weight}kg, Height: ${height}cm
+- Activity: $activityLevel, Goals: $goals
+- Daily targets: ${macroTargets != null ? 'Protein ${macroTargets['protein']}g, Carbs ${macroTargets['carbs']}g, Fat ${macroTargets['fat']}g${calorieTarget != null ? ' (~${calorieTarget.round()} kcal)' : ''}' : 'Not set'}
 
-WEEKLY DATA ($weekStartDate to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
-${weeklyData.map((day) => '${day['dayName']}: ${day['calories']}kcal, ${day['protein']}g protein, ${day['carbs']}g carbs, ${day['fat']}g fat (${day['foodsCount']} foods)').join('\n')}
+COMPUTED WEEKLY STATS ($weekStartDate to ${startDate.add(Duration(days: 6)).toString().split(' ')[0]}):
+- Days logged: $loggedN of 7
+- Average per logged day: ${avgCal.round()} kcal, ${avgProt.round()}g protein, ${avgCarb.round()}g carbs, ${avgFat.round()}g fat
+- Protein target hit on $proteinHits of $loggedN logged days${calorieTarget != null ? '; calories within +/-10% of target on $calorieOnTarget of $loggedN days' : ''}
+- Macro split by calories: ${macroPct(pK)}% protein, ${macroPct(cK)}% carbs, ${macroPct(fK)}% fat
+- Most-logged foods: ${topFoods.isEmpty ? 'n/a' : topFoods}
+- Per-day intake: ${weeklyData.map((day) => '${(day['dayName'] as String).substring(0, 3)} ${day['calories']}kcal/${day['protein']}gP').join(', ')}
 
-TASK: Provide a comprehensive weekly analysis as a JSON object:
+TASK: Respond with ONLY this JSON object:
 
 {
-  "summary": {
-    "averageCalories": 0,
-    "averageProtein": 0,
-    "averageCarbs": 0,
-    "averageFat": 0,
-    "consistency": "High/Medium/Low",
-    "targetAdherence": "Excellent/Good/Needs Improvement"
-  },
-  "insights": [
-    "Key insight about weekly patterns",
-    "Observation about nutrition quality",
-    "Comment on goal progress"
+  "pattern": "The single most important, specific pattern this week in one sentence, grounded in the stats above (e.g. 'Protein fell ~30g below target every weekend').",
+  "swaps": [
+    {"title": "Concrete food B instead of food A (use their most-logged foods when relevant)", "detail": "quantified macro change, e.g. '+18g protein, -70 kcal'"},
+    {"title": "Second realistic swap targeting their biggest gap", "detail": "quantified change"}
   ],
-  "recommendations": [
-    "Specific recommendation for next week #1",
-    "Specific recommendation for next week #2",
-    "Specific recommendation for next week #3"
-  ],
-  "weeklyQuote": "Motivational quote reflecting their weekly performance"
+  "insights": ["Grounded observation #1", "Grounded observation #2", "Grounded observation #3"],
+  "recommendations": ["Actionable next-week step #1", "step #2", "step #3"],
+  "quote": "One short, personal, encouraging line referencing their actual week."
 }
 
-Calculate averages, assess consistency of intake, evaluate target adherence, and provide actionable insights and recommendations for the upcoming week.
-
-Respond with ONLY the JSON object, no additional text.
+Rules: be specific and numeric; tie every point to the stats; target the biggest gap (usually the macro furthest from target); no generic filler. Respond with ONLY the JSON object.
 """,
               },
             ],
           },
         ],
         "generationConfig": {
-          "temperature": 0.7,
+          "temperature": 0.8,
           "topK": 40,
           "topP": 0.95,
           "maxOutputTokens": 1200,
@@ -457,7 +452,7 @@ Respond with ONLY the JSON object, no additional text.
       // Make the API request
       final requestUri = await _buildRequestUri(
         apiKey,
-        fallbackModel: 'gemini-2.0-flash',
+        fallbackModel: 'gemini-1.5-flash-latest',
       );
 
       final response = await http.post(
@@ -468,35 +463,39 @@ Respond with ONLY the JSON object, no additional text.
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final text = _extractResponseText(data, 'weekly nutrition analysis');
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
 
-        try {
-          String cleanedText = text.trim();
+        if (text != null) {
+          try {
+            String cleanedText = text.trim();
 
-          if (cleanedText.startsWith('```json')) {
-            cleanedText = cleanedText.substring(7);
-          } else if (cleanedText.startsWith('```')) {
-            cleanedText = cleanedText.substring(3);
+            if (cleanedText.startsWith('```json')) {
+              cleanedText = cleanedText.substring(7);
+            } else if (cleanedText.startsWith('```')) {
+              cleanedText = cleanedText.substring(3);
+            }
+
+            if (cleanedText.endsWith('```')) {
+              cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+            }
+
+            cleanedText = cleanedText.trim();
+
+            final weeklyAnalysis = json.decode(cleanedText);
+
+            // Store the weekly analysis
+            final weekKey =
+                '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
+            await SettingsService.setWeeklyAnalysis(weekKey, weeklyAnalysis);
+
+            return weeklyAnalysis;
+          } catch (e) {
+            print('Error parsing weekly analysis response: $e');
+            print('AI Response: $text');
+            throw Exception('Invalid response format from AI: $e');
           }
-
-          if (cleanedText.endsWith('```')) {
-            cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-          }
-
-          cleanedText = cleanedText.trim();
-
-          final weeklyAnalysis = json.decode(cleanedText);
-
-          // Store the weekly analysis
-          final weekKey =
-              '${startDate.year}-W${((startDate.difference(DateTime(startDate.year, 1, 1)).inDays) / 7).ceil()}';
-          await SettingsService.setWeeklyAnalysis(weekKey, weeklyAnalysis);
-
-          return weeklyAnalysis;
-        } catch (e) {
-          print('Error parsing weekly analysis response: $e');
-          print('AI Response: $text');
-          throw Exception('Invalid response format from AI: $e');
+        } else {
+          throw Exception('No response from AI');
         }
       } else {
         final errorData = json.decode(response.body);

@@ -6,7 +6,12 @@ class CustomRecipeService {
   static Future<int> saveCustomRecipe(CustomRecipe recipe) async {
     final db = await DatabaseService.instance.database;
     
-    // First save as a food item for integration with existing system
+    // First save as a food item for integration with existing system.
+    // A recipe's canonical logging unit is one serving == 100 nominal units:
+    // the food row stores PER-SERVING nutrition in the per-100 columns, so
+    // defaultPortionSize is pinned to 100 and hasServing enabled. Logging N
+    // servings then stores amount = 100 * N and every reader (perValue*amount/100)
+    // resolves to the correct per-serving * N total.
     final foodId = await db.insert('foods', {
       'name': recipe.name,
       'calories': recipe.calories / recipe.servings, // Per serving nutrition
@@ -14,7 +19,8 @@ class CustomRecipeService {
       'carbs': recipe.carbs / recipe.servings,
       'protein': recipe.protein / recipe.servings,
       'type': 'custom_recipe',
-      'defaultPortionSize': recipe.defaultPortionSize,
+      'defaultPortionSize': 100.0,
+      'hasServing': 1,
       'portionDescription': recipe.portionDescription,
     });
 
@@ -22,7 +28,9 @@ class CustomRecipeService {
     final recipeData = recipe.toMap();
     recipeData['foodId'] = foodId; // Link to the food entry
     recipeData.remove('id'); // Remove id for insertion
-    
+    // Keep the recipe's own portion size canonical (one serving == 100 units).
+    recipeData['defaultPortionSize'] = 100.0;
+
     final recipeId = await db.insert('custom_recipes', recipeData);
     
     return recipeId;
@@ -89,7 +97,8 @@ class CustomRecipeService {
     
     await db.update(
       'custom_recipes',
-      recipe.toMap(),
+      // Keep the recipe's own portion size canonical (one serving == 100 units).
+      recipe.toMap()..['defaultPortionSize'] = 100.0,
       where: 'id = ?',
       whereArgs: [recipe.id],
     );
@@ -104,7 +113,9 @@ class CustomRecipeService {
           'fat': recipe.fat / recipe.servings,
           'carbs': recipe.carbs / recipe.servings,
           'protein': recipe.protein / recipe.servings,
-          'defaultPortionSize': recipe.defaultPortionSize,
+          // Keep the recipe food canonical: one serving == 100 nominal units.
+          'defaultPortionSize': 100.0,
+          'hasServing': 1,
           'portionDescription': recipe.portionDescription,
         },
         where: 'id = (SELECT foodId FROM custom_recipes WHERE id = ?)',

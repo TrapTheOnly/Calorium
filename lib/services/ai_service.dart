@@ -122,60 +122,66 @@ class AiService {
 
       // Create the analysis prompt with optional user input
       String analysisPrompt = """
-Analyze this food image and provide detailed nutritional information with accurate portion estimation.
+You are a careful nutrition analyst. The attached image is EITHER:
+  (A) a photo of real food/drink, OR
+  (B) a screenshot or photo of nutrition INFORMATION — a package label, a Google
+      search result about a specific meal, a menu, or a table of numbers.
 
-${userPrompt != null && userPrompt.isNotEmpty ? 'USER CONTEXT: $userPrompt\n\nPlease take this context into account when analyzing the food.' : ''}
+${userPrompt != null && userPrompt.isNotEmpty ? 'USER CONTEXT (use this — it may state the real weight/volume or how to read the numbers): "$userPrompt"\n' : ''}
 
-IMPORTANT: You must respond with ONLY a valid JSON object in this exact format, with no additional text or explanations:
+Respond with ONLY a valid JSON object in EXACTLY this shape, no extra text:
 
 {
   "name": "Food name",
-  "calories": 250,
-  "protein": 15.5,
-  "carbs": 30.2,
-  "fat": 8.7,
-  "defaultPortionSize": 180,
-  "portionDescription": "1 serving (180g)"
+  "calories": 250,        // PER 100 g (or per 100 ml for liquids)
+  "protein": 15.5,        // per 100 g
+  "carbs": 30.2,          // per 100 g
+  "fat": 8.7,             // per 100 g
+  "defaultPortionSize": 180,          // grams (or ml) of ONE portion the user likely ate
+  "portionDescription": "1 serving (180g)",
+  "basis": "per_100g",                // one of: per_100g | per_serving | whole_item
+  "note": "short sentence on what you assumed"
 }
 
-PORTION ESTIMATION GUIDELINES:
-1. Look for reference objects in the image (plates, utensils, hands, cups, etc.)
-2. Use these objects to estimate the actual size of the food:
-   - Standard dinner plate: ~27cm diameter
-   - Fork: ~20cm length
-   - Spoon: ~15cm length
-   - Adult hand: ~18cm length
-   - Coffee mug: ~8cm diameter
-   - Wine glass: ~7cm diameter
+STEP 1 — Decide if this is a food photo (A) or nutrition information (B).
 
-3. Calculate volume/weight using mathematical reasoning:
-   - Dense foods (meat, cheese): ~1g per cm³
-   - Light foods (bread, salad): ~0.3-0.5g per cm³
-   - Liquid foods (soup, sauce): ~1g per ml
-   - Rice/pasta: ~0.7g per cm³
+STEP 2 — Determine WHAT THE NUMBERS REFER TO. This is the most important step. Do
+NOT blindly assume the numbers are per 100 g.
+- If the image/text EXPLICITLY says "per 100 g" / "per 100 ml": basis = "per_100g".
+  Use those numbers directly as the per-100g values.
+- If the numbers are labelled "per serving" / "per portion" / "per pack" / "per piece",
+  OR they are clearly the TOTAL for the whole dish/meal shown (typical for a Google
+  result about a specific meal or a menu item): basis = "per_serving" (or "whole_item").
+  Those numbers are the TOTAL for that portion, NOT per 100 g.
+- Only choose "per_100g" when it is explicitly stated. When unsure for a plated or
+  whole meal, treat the numbers as the TOTAL for the whole meal.
 
-4. Estimate the food dimensions relative to reference objects
-5. Calculate approximate weight in grams for the actual portion shown
+STEP 3 — Determine the total weight/volume of the portion (defaultPortionSize):
+- If USER CONTEXT gives a weight/volume (e.g. "this is 350 g", "two cups"), USE THAT.
+- Else if a label states a serving/net weight (e.g. "serving size 55 g", "net 330 ml"), use it.
+- Else estimate a realistic weight for the item shown.
 
-PORTION SIZE LOGIC FOR INDIVIDUAL ITEMS:
-- For countable items (cherry tomatoes, grapes, nuts, berries, etc.): Base the portion on a SINGLE ITEM, not the total shown
-- Example: If you see 3 cherry tomatoes, the portion should be "1 cherry tomato (15g)", not "3 cherry tomatoes (45g)"
-- Example: If you see 5 grapes, the portion should be "1 grape (5g)", not "5 grapes (25g)"
-- For dishes/meals: Base the portion on the total amount shown or a reasonable serving size
-- Example: If you see a bowl of pasta, the portion should be "1 serving (200g)" representing the whole bowl
+STEP 4 — Convert to PER-100g values for the JSON (the app stores everything per 100 g/ml):
+- basis = "per_100g": values are already per 100 g — output them as-is; set defaultPortionSize from step 3.
+- basis = "per_serving"/"whole_item" with a TOTAL for a portion of W grams:
+      per_100g_value = total_value * 100 / W
+  Output those per-100g values and set defaultPortionSize = W.
+- NEVER invent a weight and then multiply already-per-100g numbers by it.
+- NEVER treat whole-meal totals as if they were per 100 g.
 
-NUTRITION CALCULATION:
-- All nutritional values should be per 100g
-- Use decimal numbers for precision
-- Be specific with the food name based on what you see
-- If you can't identify the food clearly, use "Unknown dish" as the name
-- The defaultPortionSize should reflect the portion logic above
-- Give a clear portion description that matches the estimated weight
+STEP 5 — Sanity check: per-100g calories are almost always 20–900 kcal/100g. If yours
+fall outside this, you likely misread the basis in step 2 — re-check it.
 
-EXAMPLE REASONING:
-- 3 cherry tomatoes visible: defaultPortionSize = 15 (weight of 1 tomato), portionDescription = "1 cherry tomato (15g)"
-- Pasta on a dinner plate: defaultPortionSize = 185 (total serving), portionDescription = "1 serving (185g)"
-- 2 cookies: defaultPortionSize = 25 (weight of 1 cookie), portionDescription = "1 cookie (25g)"
+For food PHOTOS with no printed numbers:
+- Estimate per-100g values from the food type.
+- Estimate defaultPortionSize from reference objects (dinner plate ~27cm, fork ~20cm,
+  spoon ~15cm, adult hand ~18cm, mug ~8cm). Dense foods ~1g/cm³, bread/salad ~0.3–0.5g/cm³,
+  liquids ~1g/ml, rice/pasta ~0.7g/cm³.
+- For countable small items (a few grapes, nuts, cherry tomatoes, cookies), base
+  defaultPortionSize on a SINGLE piece (e.g. "1 cherry tomato (15g)"), not the total shown.
+
+Units: use ml + "ml" descriptions for clearly liquid items; otherwise grams. If the food
+cannot be identified, use "Unknown dish". Use decimals for precision.
 """;
 
       // Prepare the request body

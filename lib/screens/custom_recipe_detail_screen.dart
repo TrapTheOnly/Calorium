@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import '../models/custom_recipe.dart';
 import '../services/custom_recipe_service.dart';
 import '../services/log_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/fasting_prompt.dart';
+import '../utils/num_format.dart';
 import '../models/log_entry.dart';
 import '../widgets/custom_alert.dart';
+import '../widgets/ui_kit.dart';
 
 class CustomRecipeDetailScreen extends StatefulWidget {
   final CustomRecipe recipe;
@@ -22,8 +25,12 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   final TextEditingController _servingsController = TextEditingController();
   final TextEditingController _newTagController = TextEditingController();
   bool _isLogging = false;
+  bool _showAllIngredients = false;
+  bool _detailsExpanded = false;
   String _tempDifficulty = '';
-  TimeOfDay _selectedLogTime = const TimeOfDay(hour: 14, minute: 0);
+  final Set<int> _checkedIngredients = {};
+
+  static const int _kIngredientPreview = 8;
 
   @override
   void initState() {
@@ -31,6 +38,9 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     _recipe = widget.recipe;
     _servingsController.text = '1';
     _tempDifficulty = _recipe.difficulty;
+    _servingsController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -40,716 +50,524 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     super.dispose();
   }
 
+  double get _recipeServings =>
+      _recipe.servings == 0 ? 1.0 : _recipe.servings.toDouble();
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final totalMin = _recipe.totalTimeMinutes;
+    final difficulty = _capitalizeFirst(_recipe.difficulty);
+
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          _recipe.name,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      appBar: PageAppBar(
+        title: _recipe.name,
+        subtitle: '$totalMin min · $difficulty',
         actions: [
           IconButton(
             icon: Icon(
               _recipe.isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: Theme.of(context).colorScheme.primary,
+              color: _recipe.isFavorite ? scheme.primary : null,
             ),
+            tooltip: 'Favorite',
             onPressed: _toggleFavorite,
           ),
           IconButton(
-            icon: Icon(Icons.delete, color: Colors.red),
+            icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
+            tooltip: 'Delete',
             onPressed: _showDeleteConfirmation,
           ),
-          IconButton(
-            icon: Icon(
-              Icons.home_outlined,
-              color: Theme.of(context).colorScheme.primary,
-              size: 28,
-            ),
-            onPressed:
-                () => Navigator.of(context).popUntil((route) => route.isFirst),
-          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+      body: SafeArea(
+        top: false,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildRecipeHeader(),
-            const SizedBox(height: 24),
-            _buildNutritionCard(),
-            const SizedBox(height: 24),
-            _buildIngredientsSection(),
-            const SizedBox(height: 24),
-            _buildInstructionsSection(),
-            const SizedBox(height: 24),
-            _buildTagsSection(),
-            const SizedBox(height: 24),
-            _buildLogToJournalSection(),
-            const SizedBox(height: 32),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTheme.pagePadding,
+                  AppTheme.space8,
+                  AppTheme.pagePadding,
+                  AppTheme.space16,
+                ),
+                children: [
+                  _buildNutritionCard(),
+                  if (_recipe.description.trim().isNotEmpty) ...[
+                    const SizedBox(height: AppTheme.space16),
+                    _ExpandableDescription(text: _recipe.description.trim()),
+                  ],
+                  const SizedBox(height: AppTheme.space16),
+                  _buildMetaRow(),
+                  const SizedBox(height: AppTheme.space24),
+                  _buildIngredients(),
+                  const SizedBox(height: AppTheme.space24),
+                  _buildInstructions(),
+                  const SizedBox(height: AppTheme.space16),
+                  _buildDetailsTile(),
+                ],
+              ),
+            ),
+            _buildLogBar(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildRecipeHeader() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _recipe.name,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _recipe.description,
-              style: TextStyle(
-                fontSize: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            // First row of chips
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildInfoChip(
-                  Icons.schedule,
-                  'Prep: ${_recipe.prepTimeMinutes}m',
-                ),
-                _buildInfoChip(
-                  Icons.timer,
-                  'Cook: ${_recipe.cookTimeMinutes}m',
-                ),
-                _buildInfoChip(
-                  Icons.restaurant,
-                  '${_recipe.servings} servings',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Second row of chips
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                GestureDetector(
-                  onTap: () => _showDifficultyEditor(),
-                  child: _buildInfoChip(
-                    Icons.signal_cellular_alt,
-                    _capitalizeFirst(_recipe.difficulty),
-                    color: _getDifficultyColor(_recipe.difficulty),
-                    isEditable: true,
-                  ),
-                ),
-                _buildInfoChip(
-                  Icons.access_time,
-                  'Total: ${_recipe.totalTimeMinutes}m',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ---- Nutrition (above the fold) ------------------------------------------
 
   Widget _buildNutritionCard() {
-    // Calculate per serving nutrition (recipe stores total nutrition)
-    final caloriesPerServing = _recipe.calories / _recipe.servings;
-    final proteinPerServing = _recipe.protein / _recipe.servings;
-    final carbsPerServing = _recipe.carbs / _recipe.servings;
-    final fatPerServing = _recipe.fat / _recipe.servings;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final calPer = _recipe.calories / _recipeServings;
+    final protPer = _recipe.protein / _recipeServings;
+    final carbPer = _recipe.carbs / _recipeServings;
+    final fatPer = _recipe.fat / _recipeServings;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Nutrition Information',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Total Recipe Nutrition
-            Text(
-              'Total Recipe (${_recipe.servings} servings)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNutritionItem('Calories', '${_recipe.calories.round()}'),
-                _buildNutritionItem('Protein', '${_recipe.protein.round()}g'),
-                _buildNutritionItem('Carbs', '${_recipe.carbs.round()}g'),
-                _buildNutritionItem('Fat', '${_recipe.fat.round()}g'),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-            Divider(
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-            ),
-            const SizedBox(height: 12),
-
-            // Per Serving Nutrition
-            Text(
-              'Per Serving',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNutritionItem(
-                  'Calories',
-                  '${caloriesPerServing.round()}',
-                ),
-                _buildNutritionItem('Protein', '${proteinPerServing.round()}g'),
-                _buildNutritionItem('Carbs', '${carbsPerServing.round()}g'),
-                _buildNutritionItem('Fat', '${fatPerServing.round()}g'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIngredientsSection() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Ingredients',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _recipe.ingredients.length,
-              itemBuilder: (context, index) {
-                String ingredient = _recipe.ingredients[index];
-
-                // Clean up ingredient text - remove empty parentheses
-                ingredient =
-                    ingredient.replaceAll(RegExp(r'\(\s*\)'), '').trim();
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        margin: const EdgeInsets.only(top: 2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          ingredient,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInstructionsSection() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Instructions',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _recipe.instructions.length,
-              itemBuilder: (context, index) {
-                String instruction = _recipe.instructions[index];
-
-                // Check if instruction already starts with a number (from AI)
-                bool hasNumberPrefix = RegExp(
-                  r'^\d+\.?\s',
-                ).hasMatch(instruction.trim());
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Only show number circle if instruction doesn't already have a number
-                      if (!hasNumberPrefix) ...[
-                        Container(
-                          width: 28,
-                          height: 28,
-                          margin: const EdgeInsets.only(top: 2),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${index + 1}',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
-                      Expanded(
-                        child: Text(
-                          instruction,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTagsSection() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Tags',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                IconButton(
-                  onPressed: _showAddTagDialog,
-                  icon: Icon(
-                    Icons.add,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  tooltip: 'Add Tag',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tags help organize and filter your recipes. Popular tags: breakfast, lunch, dinner',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_recipe.tags.isEmpty)
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
               Text(
-                'No tags added yet. Tap + to add tags for easier recipe organization.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fmtNum(calPer),
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary,
                 ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children:
-                    _recipe.tags.map((tag) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onPrimary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () => _removeTag(tag),
-                              child: Icon(
-                                Icons.close,
-                                size: 14,
-                                color: Theme.of(context).colorScheme.onPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
               ),
-          ],
-        ),
+              const SizedBox(width: 6),
+              Text(
+                'kcal / serving',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.space16),
+          Row(
+            children: [
+              Expanded(child: _macroPill('Protein', protPer, scheme.primary)),
+              const SizedBox(width: AppTheme.space8),
+              Expanded(child: _macroPill('Carbs', carbPer, scheme.tertiary)),
+              const SizedBox(width: AppTheme.space8),
+              Expanded(child: _macroPill('Fat', fatPer, scheme.secondary)),
+            ],
+          ),
+          const SizedBox(height: AppTheme.space8),
+          Text(
+            'Whole recipe: ${fmtNum(_recipe.calories)} kcal · '
+            '${fmtNum(_recipe.protein)}P · ${fmtNum(_recipe.carbs)}C · '
+            '${fmtNum(_recipe.fat)}F',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildLogToJournalSection() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+  Widget _buildMetaRow() {
+    // Max 3 chips — time/difficulty already peek in the AppBar subtitle;
+    // servings is the one fact cooking needs at a glance. Prep/cook live
+    // under Details to avoid repeating the same numbers.
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _infoChip(Icons.restaurant_rounded, '${_recipe.servings} servings'),
+        _infoChip(
+          Icons.signal_cellular_alt_rounded,
+          _capitalizeFirst(_recipe.difficulty),
+          color: _difficultyColor(_recipe.difficulty),
+        ),
+        if (_recipe.prepTimeMinutes > 0 || _recipe.cookTimeMinutes > 0)
+          _infoChip(
+            Icons.soup_kitchen_outlined,
+            'Prep ${_recipe.prepTimeMinutes}m · Cook ${_recipe.cookTimeMinutes}m',
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      ],
+    );
+  }
+
+  // ---- Ingredients ---------------------------------------------------------
+
+  Widget _buildIngredients() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final all = _recipe.ingredients;
+    final showAll = _showAllIngredients || all.length <= _kIngredientPreview;
+    final visible = showAll ? all : all.take(_kIngredientPreview).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
+            Text('Ingredients', style: theme.textTheme.titleMedium),
+            const SizedBox(width: AppTheme.space8),
             Text(
-              'Log to Food Journal',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
+              '${all.length}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Track this recipe in your daily nutrition log',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: _isLogging ? null : _pickLogTime,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.outline.withOpacity(0.2),
-                  ),
-                ),
+          ],
+        ),
+        const SizedBox(height: AppTheme.space12),
+        ...visible.asMap().entries.map((entry) {
+          // Map visible index back to the real ingredient index so check
+          // state survives "Show all".
+          final realIndex = entry.key;
+          final ingredient =
+              entry.value.replaceAll(RegExp(r'\(\s*\)'), '').trim();
+          final checked = _checkedIngredients.contains(realIndex);
+          final isLast = entry.key == visible.length - 1 && showAll;
+          return Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : AppTheme.space4),
+            child: InkWell(
+              onTap: () => setState(() {
+                if (checked) {
+                  _checkedIngredients.remove(realIndex);
+                } else {
+                  _checkedIngredients.add(realIndex);
+                }
+              }),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.schedule,
-                      color: Theme.of(context).colorScheme.primary,
+                      checked
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      size: 22,
+                      color: checked
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppTheme.space8),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Time eaten',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            MaterialLocalizations.of(
-                              context,
-                            ).formatTimeOfDay(_selectedLogTime),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        ingredient,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.4,
+                          decoration: checked
+                              ? TextDecoration.lineThrough
+                              : null,
+                          color: checked
+                              ? scheme.onSurfaceVariant
+                              : scheme.onSurface,
+                        ),
                       ),
-                    ),
-                    Icon(
-                      Icons.edit_outlined,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
+          );
+        }),
+        if (!showAll)
+          TextButton(
+            onPressed: () => setState(() => _showAllIngredients = true),
+            child: Text('Show all (${all.length})'),
+          ),
+      ],
+    );
+  }
+
+  // ---- Instructions --------------------------------------------------------
+
+  Widget _buildInstructions() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Instructions', style: theme.textTheme.titleMedium),
+        const SizedBox(height: AppTheme.space12),
+        ..._recipe.instructions.asMap().entries.map((entry) {
+          final index = entry.key;
+          final instruction =
+              entry.value.trim().replaceFirst(RegExp(r'^\d+\.?\s*'), '');
+          final isLast = index == _recipe.instructions.length - 1;
+          return Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : AppTheme.space20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _servingsController,
-                    decoration: InputDecoration(
-                      labelText: 'Servings',
-                      hintText: 'e.g., 1.5',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${index + 1}',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    keyboardType: TextInputType.number,
                   ),
                 ),
-                const SizedBox(width: 16),
-                ElevatedButton.icon(
-                  onPressed: _isLogging ? null : _logRecipe,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                const SizedBox(width: AppTheme.space12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      instruction,
+                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
                     ),
                   ),
-                  icon:
-                      _isLogging
-                          ? SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Theme.of(context).colorScheme.onPrimary,
-                              ),
-                            ),
-                          )
-                          : const Icon(Icons.add),
-                  label: Text(_isLogging ? 'Logging...' : 'Log Food'),
                 ),
               ],
             ),
-          ],
+          );
+        }),
+      ],
+    );
+  }
+
+  // ---- Collapsed details (tags) --------------------------------------------
+
+  Widget _buildDetailsTile() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => setState(() => _detailsExpanded = !_detailsExpanded),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.space12,
+            vertical: AppTheme.space8,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Details & tags', style: theme.textTheme.titleSmall),
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: _detailsExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              AnimatedCrossFade(
+                firstChild: const SizedBox(width: double.infinity),
+                secondChild: Padding(
+                  padding: const EdgeInsets.only(top: AppTheme.space8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text('Difficulty',
+                            style: theme.textTheme.bodyMedium),
+                        trailing: Text(
+                          _capitalizeFirst(_recipe.difficulty),
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: _difficultyColor(_recipe.difficulty),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        onTap: _showDifficultyEditor,
+                      ),
+                      if (_recipe.tags.isEmpty)
+                        Text(
+                          'No tags yet.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _recipe.tags.map((tag) {
+                            return Container(
+                              padding: const EdgeInsets.only(
+                                left: 12,
+                                right: 6,
+                                top: 6,
+                                bottom: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.secondaryContainer,
+                                borderRadius:
+                                    BorderRadius.circular(AppTheme.radiusPill),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    tag,
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                      color: scheme.onSecondaryContainer,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  GestureDetector(
+                                    onTap: () => _removeTag(tag),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      size: 15,
+                                      color: scheme.onSecondaryContainer,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      TextButton.icon(
+                        onPressed: _showAddTagDialog,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Add tag'),
+                      ),
+                    ],
+                  ),
+                ),
+                crossFadeState: _detailsExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 180),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoChip(
-    IconData icon,
-    String text, {
-    Color? color,
-    bool isEditable = false,
-  }) {
+  // ---- Pinned log bar ------------------------------------------------------
+
+  Widget _buildLogBar() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final servings = double.tryParse(_servingsController.text.trim());
+    final valid = servings != null && servings > 0;
+    final previewCal =
+        valid ? (_recipe.calories / _recipeServings) * servings : null;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(
-          0.1,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: (color ?? Theme.of(context).colorScheme.outline).withOpacity(
-            0.3,
+        color: scheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
           ),
         ),
       ),
+      padding: const EdgeInsets.fromLTRB(
+        AppTheme.pagePadding,
+        AppTheme.space12,
+        AppTheme.pagePadding,
+        AppTheme.space12,
+      ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+          SizedBox(
+            width: 88,
+            child: TextField(
+              controller: _servingsController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                isDense: true,
+                labelText: 'Servings',
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppTheme.space12),
+          Expanded(
+            child: Text(
+              previewCal != null
+                  ? '${fmtNum(previewCal)} kcal'
+                  : '—',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: previewCal != null
+                    ? scheme.onSurface
+                    : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: (_isLogging || !valid) ? null : _logRecipe,
+            icon: _isLogging
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(scheme.onPrimary),
+                    ),
+                  )
+                : const Icon(Icons.add_rounded, size: 18),
+            label: Text(_isLogging ? 'Logging…' : 'Add to today'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Small widgets -------------------------------------------------------
+
+  Widget _macroPill(String label, double value, Color color) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppTheme.space12,
+        horizontal: AppTheme.space8,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+      ),
+      child: Column(
+        children: [
           Text(
-            text,
-            style: TextStyle(
-              color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: color != null ? FontWeight.w500 : FontWeight.normal,
+            '${fmtNum(value)}g',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -757,25 +575,30 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     );
   }
 
-  Widget _buildNutritionItem(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: Theme.of(context).colorScheme.onSurface,
+  Widget _infoChip(IconData icon, String text, {Color? color}) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final c = color ?? scheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: c),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: c,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -784,16 +607,17 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
 
-  Color _getDifficultyColor(String difficulty) {
+  Color _difficultyColor(String difficulty) {
+    final scheme = Theme.of(context).colorScheme;
     switch (difficulty.toLowerCase()) {
       case 'easy':
-        return Colors.green;
+        return scheme.tertiary;
       case 'medium':
-        return Colors.orange;
+        return scheme.secondary;
       case 'hard':
-        return Colors.red;
+        return scheme.error;
       default:
-        return Colors.grey;
+        return scheme.onSurfaceVariant;
     }
   }
 
@@ -807,45 +631,20 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
       setState(() {
         _recipe = _recipe.copyWith(isFavorite: !_recipe.isFavorite);
       });
-
-      AlertHelper.showSuccessAlert(
-        context,
-        title:
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
             _recipe.isFavorite
-                ? 'Added to Favorites'
-                : 'Removed from Favorites',
-        message:
-            _recipe.isFavorite
-                ? 'Recipe has been added to your favorites'
-                : 'Recipe has been removed from your favorites',
+                ? 'Added to favorites'
+                : 'Removed from favorites',
+          ),
+          duration: const Duration(seconds: 1),
+        ),
       );
     } catch (e) {
       _showErrorSnackBar('Failed to update favorite status');
     }
-  }
-
-  Future<void> _pickLogTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _selectedLogTime,
-    );
-
-    if (picked != null) {
-      setState(() {
-        _selectedLogTime = picked;
-      });
-    }
-  }
-
-  DateTime _composeLogDateTime() {
-    final now = DateTime.now();
-    return DateTime(
-      now.year,
-      now.month,
-      now.day,
-      _selectedLogTime.hour,
-      _selectedLogTime.minute,
-    );
   }
 
   Future<void> _logRecipe() async {
@@ -869,21 +668,21 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     setState(() => _isLogging = true);
 
     try {
-      final logDateTime = _composeLogDateTime();
-      final logDateString =
-          '${logDateTime.year}-${logDateTime.month.toString().padLeft(2, '0')}-${logDateTime.day.toString().padLeft(2, '0')}';
-
+      final now = DateTime.now();
       final logEntry = LogEntry(
-        foodId: _recipe.foodId!, // Use the linked food ID
-        amount: 100.0, // Use 100g as base amount for custom recipes
-        date: logDateString,
-        loggedAt: logDateTime,
-        portions: servings, // Use portions field for servings
+        foodId: _recipe.foodId!,
+        // One serving == 100 nominal units for recipe foods, so N servings is
+        // stored as amount = 100 * N. Readers use perServingCal * amount / 100,
+        // which then correctly yields perServingCal * N.
+        amount: 100.0 * servings,
+        date:
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        portions: servings,
         foodName: _recipe.name,
-        calories: _recipe.calories / _recipe.servings, // Per serving calories
-        protein: _recipe.protein / _recipe.servings,
-        carbs: _recipe.carbs / _recipe.servings,
-        fat: _recipe.fat / _recipe.servings,
+        calories: _recipe.calories / _recipeServings,
+        protein: _recipe.protein / _recipeServings,
+        carbs: _recipe.carbs / _recipeServings,
+        fat: _recipe.fat / _recipeServings,
       );
 
       await _logService.insertLogEntry(logEntry);
@@ -900,20 +699,19 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
 
       setState(() => _isLogging = false);
 
-      // Show success message with navigation option
       AlertHelper.showSuccessAlert(
         context,
-        title: 'Recipe Logged Successfully!',
+        title: 'Recipe logged',
         message:
-            '$servings serving(s) of ${_recipe.name} logged to your daily nutrition.',
+            '$servings serving(s) of ${_recipe.name} added to today\'s log.',
         actionButtonText: 'View Today',
         onActionPressed: () {
-          Navigator.of(context).pop(); // Close the alert
+          Navigator.of(context).pop();
           Navigator.of(context).popUntil((route) => route.isFirst);
         },
       );
 
-      _servingsController.text = '1'; // Reset to default
+      _servingsController.text = '1';
     } catch (e) {
       setState(() => _isLogging = false);
       _showErrorSnackBar('Failed to log recipe: $e');
@@ -921,8 +719,7 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
   }
 
   void _showDeleteConfirmation() async {
-    final bool confirm =
-        await AlertHelper.showConfirmationAlert(
+    final bool confirm = await AlertHelper.showConfirmationAlert(
           context,
           title: 'Delete Recipe',
           message:
@@ -932,21 +729,16 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         ) ??
         false;
 
-    if (confirm) {
-      await _deleteRecipe();
-    }
+    if (confirm) await _deleteRecipe();
   }
 
   Future<void> _deleteRecipe() async {
     try {
       await CustomRecipeService.deleteCustomRecipe(_recipe.id!);
-
       if (mounted) {
         Navigator.of(context).pop();
-        AlertHelper.showSuccessAlert(
-          context,
-          title: 'Recipe Deleted',
-          message: 'Recipe has been deleted successfully',
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe deleted')),
         );
       }
     } catch (e) {
@@ -970,31 +762,28 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            items:
-                ['easy', 'medium', 'hard'].map((difficulty) {
-                  return DropdownMenuItem(
-                    value: difficulty,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: _getDifficultyColor(difficulty),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(_capitalizeFirst(difficulty)),
-                      ],
+            items: ['easy', 'medium', 'hard'].map((difficulty) {
+              return DropdownMenuItem(
+                value: difficulty,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _difficultyColor(difficulty),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  );
-                }).toList(),
+                    const SizedBox(width: 8),
+                    Text(_capitalizeFirst(difficulty)),
+                  ],
+                ),
+              );
+            }).toList(),
             onChanged: (value) {
               if (value != null) {
-                setState(() {
-                  _tempDifficulty = value;
-                });
+                setState(() => _tempDifficulty = value);
               }
             },
           ),
@@ -1008,20 +797,12 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         TextButton(
           onPressed: () async {
             try {
-              final updatedRecipe = _recipe.copyWith(
-                difficulty: _tempDifficulty,
-              );
+              final updatedRecipe =
+                  _recipe.copyWith(difficulty: _tempDifficulty);
               await CustomRecipeService.updateCustomRecipe(updatedRecipe);
-              setState(() {
-                _recipe = updatedRecipe;
-              });
+              setState(() => _recipe = updatedRecipe);
+              if (!mounted) return;
               Navigator.of(context).pop();
-              AlertHelper.showSuccessAlert(
-                context,
-                title: 'Difficulty Updated',
-                message:
-                    'Recipe difficulty has been updated to ${_capitalizeFirst(_tempDifficulty)}.',
-              );
             } catch (e) {
               Navigator.of(context).pop();
               _showErrorSnackBar('Failed to update difficulty: $e');
@@ -1038,22 +819,13 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
     AlertHelper.showCustomDialog<void>(
       context,
       title: 'Add Tag',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _newTagController,
-            decoration: const InputDecoration(
-              labelText: 'Enter new tag',
-              hintText: 'e.g., breakfast, vegetarian, quick',
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Popular tags: breakfast, lunch, dinner',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
+      content: TextField(
+        controller: _newTagController,
+        decoration: const InputDecoration(
+          labelText: 'Enter new tag',
+          hintText: 'e.g., breakfast, vegetarian, quick',
+        ),
+        autofocus: true,
       ),
       actions: [
         TextButton(
@@ -1071,16 +843,10 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
       try {
         final updatedRecipe = _recipe.copyWith(tags: [..._recipe.tags, newTag]);
         await CustomRecipeService.updateCustomRecipe(updatedRecipe);
-        setState(() {
-          _recipe = updatedRecipe;
-        });
+        setState(() => _recipe = updatedRecipe);
         _newTagController.clear();
+        if (!mounted) return;
         Navigator.of(context).pop();
-        AlertHelper.showSuccessAlert(
-          context,
-          title: 'Tag Added',
-          message: 'Tag "$newTag" has been added to the recipe.',
-        );
       } catch (e) {
         Navigator.of(context).pop();
         _showErrorSnackBar('Failed to add tag: $e');
@@ -1100,16 +866,60 @@ class _CustomRecipeDetailScreenState extends State<CustomRecipeDetailScreen> {
         tags: _recipe.tags.where((t) => t != tag).toList(),
       );
       await CustomRecipeService.updateCustomRecipe(updatedRecipe);
-      setState(() {
-        _recipe = updatedRecipe;
-      });
-      AlertHelper.showSuccessAlert(
-        context,
-        title: 'Tag Removed',
-        message: 'Tag "$tag" has been removed from the recipe.',
-      );
+      setState(() => _recipe = updatedRecipe);
     } catch (e) {
       _showErrorSnackBar('Failed to remove tag: $e');
     }
+  }
+}
+
+/// Clamped description with Read more — keeps the first viewport scannable.
+class _ExpandableDescription extends StatefulWidget {
+  const _ExpandableDescription({required this.text});
+  final String text;
+
+  @override
+  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.topCenter,
+          child: Text(
+            widget.text,
+            maxLines: _expanded ? null : 3,
+            overflow: _expanded ? null : TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ),
+        if (widget.text.length > 120)
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _expanded ? 'Show less' : 'Read more',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

@@ -104,10 +104,6 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
             ).then((_) => _loadRecipes()),
             tooltip: 'Create New Recipe',
           ),
-          IconButton(
-            icon: Icon(Icons.home_outlined, color: Theme.of(context).colorScheme.primary, size: 28),
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-          ),
         ],
       ),
       body: Column(
@@ -194,30 +190,30 @@ class _CustomRecipesScreenState extends State<CustomRecipesScreen> {
         children: [
           Icon(
             Icons.restaurant_menu,
-            size: 80,
+            size: 40,
             color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Text(
             _recipes.isEmpty ? 'No recipes yet' : 'No recipes found',
             style: TextStyle(
-              fontSize: 24, 
-              fontWeight: FontWeight.bold,
+              fontSize: 18, 
+              fontWeight: FontWeight.w600,
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             _recipes.isEmpty
-                ? 'Create your first AI-generated recipe by using the meal planner!'
+                ? 'Create a recipe with the AI meal planner'
                 : 'Try adjusting your search or filters',
             style: TextStyle(
-              fontSize: 16, 
+              fontSize: 14, 
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           if (_recipes.isEmpty)
             ElevatedButton.icon(
               onPressed: () => Navigator.of(context).push(

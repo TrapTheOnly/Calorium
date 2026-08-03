@@ -4,7 +4,10 @@ import '../models/food.dart';
 import '../models/log_entry.dart';
 import '../services/food_service.dart';
 import '../services/log_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/fasting_prompt.dart';
+import '../utils/num_format.dart';
+import '../widgets/ui_kit.dart';
 
 class AddFoodScreen extends StatefulWidget {
   final Food? food;
@@ -32,12 +35,28 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   final LogService _logService = LogService();
 
   bool _usePortions = false; // Toggle between grams and portions
+  bool _isLiquid = false; // Base measured by volume (ml) instead of weight (g)
+  bool _hasServing = false; // Whether a distinct serving size is defined
   List<String> _selectedTags = [];
   List<String> _availableTags = [];
   TimeOfDay _selectedTime = const TimeOfDay(hour: 14, minute: 0);
 
+  /// Standard household volumes (US) for liquid serving presets.
+  static const Map<String, double> _volumePresetsMl = {
+    'tsp': 5,
+    'tbsp': 15,
+    'cup': 240,
+    'fl oz': 29.57,
+  };
+
+  /// Selected liquid serving preset key, or null for a custom ml value.
+  String? _servingPreset;
+  final _servingQtyController = TextEditingController(text: '1');
+
   bool get isEditing => widget.food != null;
   bool get isFromBarcode => widget.food != null && widget.food!.id == null;
+
+  String get _unit => _isLiquid ? 'ml' : 'g';
 
   @override
   void initState() {
@@ -52,6 +71,10 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       _proteinController.text = widget.food!.protein.toString();
       _portionSizeController.text = widget.food!.defaultPortionSize.toString();
       _portionDescController.text = widget.food!.portionDescription;
+      _isLiquid = widget.food!.isLiquid;
+      _hasServing = widget.food!.hasServing;
+      // Editing keeps the stored ml/description via the custom fields.
+      _servingPreset = null;
       _selectedTags = List.from(widget.food!.tags);
     } else {
       _portionSizeController.text = "100";
@@ -145,6 +168,128 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     });
   }
 
+  /// Parses "1", "1.5", "1/2" or mixed "1 1/2" into a double.
+  double _parseQty(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 0;
+    try {
+      final parts = s.split(RegExp(r'\s+'));
+      double frac(String f) {
+        final b = f.split('/');
+        if (b.length != 2) return 0;
+        final d = double.parse(b[1]);
+        return d == 0 ? 0 : double.parse(b[0]) / d;
+      }
+
+      if (parts.length == 2 && parts[1].contains('/')) {
+        return double.parse(parts[0]) + frac(parts[1]);
+      }
+      if (s.contains('/')) return frac(s);
+      return double.parse(s);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Recomputes the serving size (ml) + description from the selected liquid
+  /// preset and quantity (e.g. "3/4" + "cup" -> 180 ml, "3/4 cup").
+  void _recalcLiquidServing() {
+    final preset = _servingPreset;
+    if (preset == null) return; // custom: user edits ml/description directly
+    // Treat a blank/invalid quantity as 1 so the ml value and the description
+    // never disagree (no "1 cup = 0 ml").
+    final rawQty = _parseQty(_servingQtyController.text);
+    final qty = rawQty > 0 ? rawQty : 1;
+    final qtyText = _servingQtyController.text.trim().isEmpty
+        ? '1'
+        : _servingQtyController.text.trim();
+    final ml = qty * (_volumePresetsMl[preset] ?? 1);
+    _portionSizeController.text = fmtNum(ml);
+    _portionDescController.text = '$qtyText $preset';
+  }
+
+  Widget _buildLiquidServingSetup() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final resultMl = double.tryParse(_portionSizeController.text) ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Serving measure', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            ..._volumePresetsMl.keys.map(
+              (p) => ChoiceChip(
+                label: Text(p),
+                selected: _servingPreset == p,
+                onSelected: (_) => setState(() {
+                  _servingPreset = p;
+                  _recalcLiquidServing();
+                }),
+              ),
+            ),
+            ChoiceChip(
+              label: const Text('Custom ml'),
+              selected: _servingPreset == null,
+              onSelected: (_) => setState(() => _servingPreset = null),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_servingPreset != null) ...[
+          TextField(
+            controller: _servingQtyController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9./ ]')),
+            ],
+            onChanged: (_) => setState(_recalcLiquidServing),
+            decoration: InputDecoration(
+              labelText: 'Quantity',
+              suffixText: _servingPreset,
+              helperText: 'Fractions allowed, e.g. 3/4',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: const ['1/4', '1/3', '1/2', '2/3', '3/4', '1', '2']
+                .map(
+                  (f) => ActionChip(
+                    label: Text(f),
+                    onPressed: () {
+                      _servingQtyController.text = f;
+                      setState(_recalcLiquidServing);
+                    },
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '= ${fmtNum(resultMl)} ml per serving',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ] else ...[
+          _buildFormInput(
+            'Serving size (ml)',
+            _portionSizeController,
+            numeric: true,
+          ),
+          _buildFormInput(
+            'Description (e.g. "1 glass")',
+            _portionDescController,
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -157,6 +302,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     _portionDescController.dispose();
     _portionsController.dispose();
     _tagController.dispose();
+    _servingQtyController.dispose();
     super.dispose();
   }
 
@@ -171,9 +317,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       carbs: double.tryParse(_carbsController.text) ?? 0,
       protein: double.tryParse(_proteinController.text) ?? 0,
       type: 'simple',
-      defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
-      portionDescription: _portionDescController.text,
+      defaultPortionSize:
+          _hasServing ? (double.tryParse(_portionSizeController.text) ?? 100.0) : 100.0,
+      portionDescription: _hasServing
+          ? _portionDescController.text
+          : '100$_unit',
       tags: _selectedTags,
+      unit: _unit,
+      hasServing: _hasServing,
     );
 
     await _foodService.updateFood(updatedFood);
@@ -231,9 +382,14 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       carbs: double.tryParse(_carbsController.text) ?? 0,
       protein: double.tryParse(_proteinController.text) ?? 0,
       type: 'simple',
-      defaultPortionSize: double.tryParse(_portionSizeController.text) ?? 100.0,
-      portionDescription: _portionDescController.text,
+      defaultPortionSize:
+          _hasServing ? (double.tryParse(_portionSizeController.text) ?? 100.0) : 100.0,
+      portionDescription: _hasServing
+          ? _portionDescController.text
+          : '100$_unit',
       tags: _selectedTags,
+      unit: _unit,
+      hasServing: _hasServing,
     );
 
     return await _foodService.insertFood(newFood);
@@ -299,9 +455,10 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         double.tryParse(_caloriesController.text)! <= 0) {
       return false;
     }
-    if (_portionSizeController.text.isEmpty ||
-        double.tryParse(_portionSizeController.text) == null ||
-        double.tryParse(_portionSizeController.text)! <= 0) {
+    if (_hasServing &&
+        (_portionSizeController.text.isEmpty ||
+            double.tryParse(_portionSizeController.text) == null ||
+            double.tryParse(_portionSizeController.text)! <= 0)) {
       return false;
     }
     if (widget.date != null) {
@@ -323,103 +480,152 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              Icons.home_outlined,
-              color: Theme.of(context).colorScheme.primary,
-              size: 28,
-            ),
-            onPressed:
-                () => Navigator.of(context).popUntil((route) => route.isFirst),
-          ),
-        ],
+      appBar: PageAppBar(
+        title: isEditing && !isFromBarcode
+            ? 'Edit food'
+            : (isFromBarcode ? 'Add scanned food' : 'Add food'),
       ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                isEditing && !isFromBarcode
-                    ? 'Edit Food'
-                    : (isFromBarcode ? 'Add Scanned Food' : 'Add Food'),
-                style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Food info section
-              Text(
-                'Food Information',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 12),
-
               _buildFormInput('Name', _nameController),
-              _buildFormInput(
-                'Calories/100g',
+
+              // Base unit selector (weight vs volume).
+              Text('Measured by', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    label: Text('Weight (g)'),
+                    icon: Icon(Icons.scale_rounded, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('Volume (ml)'),
+                    icon: Icon(Icons.local_drink_rounded, size: 18),
+                  ),
+                ],
+                selected: {_isLiquid},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) {
+                  setState(() {
+                    _isLiquid = s.first;
+                    // Keep the portion description's unit in sync when it's the
+                    // default so liquids round-trip as volume.
+                    final desc = _portionDescController.text.trim();
+                    if (desc.isEmpty || desc == '100g' || desc == '100ml') {
+                      _portionDescController.text = '100$_unit';
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Nutrition section with distinct, color-coded macros.
+              Text(
+                'Nutrition per 100 $_unit',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              _macroField(
+                'Calories',
                 _caloriesController,
-                numeric: true,
-              ),
-              _buildFormInput('Fat/100g', _fatController, numeric: true),
-              _buildFormInput('Carbs/100g', _carbsController, numeric: true),
-              _buildFormInput(
-                'Protein/100g',
-                _proteinController,
-                numeric: true,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Portion size section
-              Text(
-                'Portion Information',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Define a standard portion size for this food',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                scheme.primary,
+                suffix: 'kcal',
               ),
               const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _macroField(
+                      'Protein',
+                      _proteinController,
+                      scheme.primary,
+                      suffix: 'g',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _macroField(
+                      'Carbs',
+                      _carbsController,
+                      scheme.tertiary,
+                      suffix: 'g',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _macroField(
+                      'Fat',
+                      _fatController,
+                      scheme.secondary,
+                      suffix: 'g',
+                    ),
+                  ),
+                ],
+              ),
 
-              _buildFormInput(
-                'Portion Size (g)',
-                _portionSizeController,
-                numeric: true,
+              const SizedBox(height: 16),
+
+              // Optional serving section.
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                ),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  ),
+                  title: const Text('Has a serving size'),
+                  subtitle: Text(
+                    _hasServing
+                        ? 'Serving will be offered when logging'
+                        : 'Only logged by ${_isLiquid ? 'volume' : 'weight'}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  value: _hasServing,
+                  onChanged: (v) {
+                    setState(() {
+                      _hasServing = v;
+                      if (v && _isLiquid && !isEditing) {
+                        // Offer a sensible default liquid serving.
+                        _servingPreset = 'cup';
+                        _servingQtyController.text = '1';
+                        _recalcLiquidServing();
+                      }
+                    });
+                  },
+                ),
               ),
-              _buildFormInput(
-                'Description (e.g. "1 bar", "1 cup")',
-                _portionDescController,
-              ),
+              if (_hasServing) ...[
+                const SizedBox(height: 12),
+                if (_isLiquid)
+                  _buildLiquidServingSetup()
+                else ...[
+                  _buildFormInput(
+                    'Serving size ($_unit)',
+                    _portionSizeController,
+                    numeric: true,
+                  ),
+                  _buildFormInput(
+                    'Description (e.g. "1 bar", "1 slice")',
+                    _portionDescController,
+                  ),
+                ],
+              ],
 
               const SizedBox(height: 12),
 
@@ -670,6 +876,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                 //     ),
                 //   ],
                 // ),
+                if (_hasServing)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16.0),
                   height: 50,
@@ -855,7 +1062,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   )
                 else
                   _buildFormInput(
-                    'Amount eaten (g)',
+                    'Amount eaten ($_unit)',
                     _amountController,
                     numeric: true,
                   ),
@@ -867,7 +1074,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 20.0),
                     child: Text(
-                      'Estimated amount: ${(double.parse(_portionsController.text) * double.parse(_portionSizeController.text)).toStringAsFixed(1)}g',
+                      'Estimated amount: ${(double.parse(_portionsController.text) * double.parse(_portionSizeController.text)).toStringAsFixed(1)}$_unit',
                       style: TextStyle(
                         fontSize: 14,
                         fontStyle: FontStyle.italic,
@@ -885,7 +1092,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   _saveExisting,
                   disabled:
                       _nameController.text.trim().isEmpty ||
-                      _portionSizeController.text.isEmpty,
+                      (_hasServing && _portionSizeController.text.isEmpty),
                 ),
                 if (widget.date != null)
                   _buildPrimaryButton(
@@ -907,6 +1114,55 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// A compact, color-coded numeric field used for calories/macros so each
+  /// nutrient is visually distinct at a glance.
+  Widget _macroField(
+    String label,
+    TextEditingController controller,
+    Color color, {
+    required String suffix,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+          ],
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: '0',
+            suffixText: suffix,
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+              borderSide: BorderSide(color: color, width: 1.5),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

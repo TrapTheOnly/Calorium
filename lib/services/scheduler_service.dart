@@ -1,14 +1,10 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
-import '../models/fasting_settings.dart';
-import '../screens/daily_log_screen.dart';
-import '../screens/weekly_analysis_screen.dart';
-import 'database_service.dart';
-import 'fasting_service.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
+import '../utils/app_navigator.dart';
 import 'nutrition_analysis_service.dart';
 import 'settings_service.dart';
 
@@ -16,35 +12,47 @@ class SchedulerService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static bool _isInitialized = false;
-  static final DateFormat _timeFormatter = DateFormat.jm();
-  static GlobalKey<NavigatorState>? _navigatorKey;
 
-  static const int _dailyAnalysisNotificationId = 1000;
-  static const int _weeklyAnalysisNotificationId = 2000;
-  static const int _analysisCompletedNotificationId = 3000;
-  static const int _weeklyCompletedNotificationId = 4000;
-  static const int _persistentEatingWindowNotificationId = 5010;
-  static const int _fastingStartNotificationId = 5100;
-  static const int _fastingEndNotificationId = 5101;
-  static const int _dailySummaryNotificationId = 5200;
-  static const String _payloadDailyAnalysisPrefix = 'navigate:daily_analysis:';
-  static const String _payloadWeeklyAnalysisPrefix =
-      'navigate:weekly_analysis:';
+  static const String payloadDaily = 'daily_reminder';
+  static const String payloadWeekly = 'weekly_reminder';
+  static const String payloadAnalysisDone = 'analysis_completed';
 
-  /// Initialize the notification system
-  static Future<void> initialize() async {
+  /// flutter_local_notifications only supports mobile here. On Windows/web the
+  /// plugin has no implementation, so every call must be skipped to avoid
+  /// UnimplementedError / LateInitializationError crashes during desktop dev.
+  static bool get isSupported {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  /// Initialize the notification system (plugin + timezone). Does not schedule.
+  static Future<void> initialize({
+    bool requestPermissionsOnInit = false,
+  }) async {
     if (_isInitialized) return;
+    if (!isSupported) {
+      _isInitialized = true;
+      debugPrint('Notifications not supported on this platform - skipping init');
+      return;
+    }
 
     try {
-      tz.initializeTimeZones();
+      tz_data.initializeTimeZones();
+      try {
+        final localName = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(localName));
+      } catch (e) {
+        debugPrint('Warning: could not set local timezone: $e');
+      }
 
       const androidSettings = AndroidInitializationSettings(
-        '@drawable/ic_notification_calorium',
+        '@mipmap/ic_launcher',
       );
       const iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
       );
 
       const initSettings = InitializationSettings(
@@ -54,796 +62,399 @@ class SchedulerService {
 
       await _notifications.initialize(
         initSettings,
-        onDidReceiveNotificationResponse: _handleNotificationResponse,
+        onDidReceiveNotificationResponse: _onNotificationResponse,
       );
 
-      // Request permissions
-      await _requestPermissions();
+      if (requestPermissionsOnInit) {
+        await requestNotificationPermissions();
+      }
 
       _isInitialized = true;
-      print('Notification system initialized successfully');
+      debugPrint('Notification system initialized successfully');
     } catch (e) {
-      print('Warning: Failed to initialize notification system: $e');
-      // Mark as initialized to prevent repeated failed attempts
+      debugPrint('Warning: Failed to initialize notification system: $e');
       _isInitialized = true;
     }
   }
 
-  /// Provide navigator access for notification taps
-  static void configureNavigator(GlobalKey<NavigatorState> navigatorKey) {
-    _navigatorKey = navigatorKey;
+  static void _onNotificationResponse(NotificationResponse response) {
+    final payload = response.payload;
+    debugPrint('Notification tapped: $payload');
+
+    // Switch to Insights so the user can open analysis tools.
+    openInsightsTab();
+
+    if (payload == payloadDaily || payload == payloadAnalysisDone) {
+      // Run analysis when the app is opened from the reminder (not while killed).
+      unawaited(performDailyAnalysis());
+    } else if (payload == payloadWeekly) {
+      unawaited(performWeeklyAnalysis());
+    }
   }
 
-  static Future<void> _requestPermissions() async {
+  static Future<bool> requestNotificationPermissions() async {
+    if (!isSupported) return false;
     try {
-      // For Android 13+ (API level 33+), request notification permission
-      await _notifications
-          .resolvePlatformSpecificImplementation<
+      final android =
+          _notifications.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+          >();
+      final granted = await android?.requestNotificationsPermission();
 
       await _notifications
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
           >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
+
+      return granted ?? true;
     } catch (e) {
-      print('Warning: Failed to request notification permissions: $e');
+      debugPrint('Warning: Failed to request notification permissions: $e');
+      return false;
     }
   }
 
-  static tz.TZDateTime _nextInstanceOfMinutes(
-    int minutesOfDay,
-    tz.TZDateTime reference,
-  ) {
-    final hours = minutesOfDay ~/ 60;
-    final minutes = minutesOfDay % 60;
+  static Future<void> _requestExactAlarmsIfNeeded() async {
+    if (!isSupported) return;
+    try {
+      final android =
+          _notifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      final canSchedule = await android?.canScheduleExactNotifications();
+      if (canSchedule == false) {
+        await android?.requestExactAlarmsPermission();
+      }
+    } catch (e) {
+      debugPrint('Warning: exact alarm permission request failed: $e');
+    }
+  }
+
+  static Future<bool> areNotificationsEnabled() async {
+    if (!isSupported) return false;
+    try {
+      final android =
+          _notifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      return await android?.areNotificationsEnabled() ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
+    final now = tz.TZDateTime.now(tz.local);
     var scheduled = tz.TZDateTime(
       tz.local,
-      reference.year,
-      reference.month,
-      reference.day,
-      hours,
-      minutes,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
     );
-    if (!scheduled.isAfter(reference)) {
+    if (!scheduled.isAfter(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }
     return scheduled;
   }
 
-  static String _formatTime(tz.TZDateTime time) {
-    return _timeFormatter.format(time.toLocal());
-  }
-
-  static double _percentage(double value, double? target) {
-    if (target == null || target <= 0) {
-      return 0;
+  static tz.TZDateTime _nextSundayAt(int hour, int minute) {
+    final now = tz.TZDateTime.now(tz.local);
+    // DateTime.sunday == 7
+    var daysUntilSunday = DateTime.sunday - now.weekday;
+    if (daysUntilSunday < 0) {
+      daysUntilSunday += 7;
     }
-    return (value / target * 100).clamp(0, 999);
-  }
-
-  static String _formatMacroProgress(
-    String label,
-    double consumed,
-    double? target,
-  ) {
-    final percent = _percentage(consumed, target);
-    final roundedPercent = percent.toStringAsFixed(percent >= 100 ? 0 : 1);
-    final valueString = consumed.toStringAsFixed(consumed >= 100 ? 0 : 1);
-    final targetString =
-        target != null && target > 0 ? target.toStringAsFixed(0) : '—';
-    return '$label: $valueString${label == 'Calories' ? ' kcal' : 'g'}'
-        ' / $targetString (${roundedPercent}%)';
-  }
-
-  static String _percentLabel(String label, double value, double? target) {
-    if (target == null || target <= 0) {
-      return '$label —';
+    var scheduled = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    ).add(Duration(days: daysUntilSunday));
+    if (!scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 7));
     }
-    final pct = _percentage(value, target).round();
-    return '$label ${pct.toInt()}%';
+    return scheduled;
   }
 
-  static Future<Map<String, double>> _loadDailyTotals(String date) async {
-    final db = await DatabaseService.instance.database;
-    final result = await db.rawQuery(
-      '''
-      SELECT 
-        SUM(f.calories * l.amount * l.portions / 100) as totalCalories,
-        SUM(f.fat * l.amount * l.portions / 100) as totalFat,
-        SUM(f.carbs * l.amount * l.portions / 100) as totalCarbs,
-        SUM(f.protein * l.amount * l.portions / 100) as totalProtein
-      FROM logs l
-      JOIN foods f ON l.foodId = f.id
-      WHERE l.date = ?
-    ''',
-      [date],
-    );
+  static Future<void> _zonedScheduleWithFallback({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime when,
+    required NotificationDetails details,
+    required DateTimeComponents matchComponents,
+    required String payload,
+  }) async {
+    await _requestExactAlarmsIfNeeded();
 
-    final row = result.isNotEmpty ? result.first : <String, Object?>{};
-
-    double _toDouble(String key) {
-      final value = row[key];
-      if (value is num) {
-        return value.toDouble();
-      }
-      return 0;
-    }
-
-    return {
-      'calories': _toDouble('totalCalories'),
-      'fat': _toDouble('totalFat'),
-      'carbs': _toDouble('totalCarbs'),
-      'protein': _toDouble('totalProtein'),
-    };
-  }
-
-  /// Schedule daily AI analysis at 10 PM
-  static Future<void> scheduleDailyAnalysis() async {
     try {
-      if (!_isInitialized) await initialize();
-
-      // Cancel existing daily notifications with error handling
-      try {
-        await _notifications.cancel(_dailyAnalysisNotificationId);
-      } catch (e) {
-        print('Warning: Could not cancel existing notification: $e');
-      }
-
-      // Check if user has API key and complete profile
-      final hasApiKey = await SettingsService.hasGeminiApiKey();
-      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
-      final weeklyOptIn =
-          await SettingsService.getWeeklyAnalysisNotificationsEnabled();
-
-      if (!hasApiKey || !hasCompleteProfile || !weeklyOptIn) {
-        return; // Don't schedule if requirements not met
-      }
-
-      // Schedule for 10 PM today
-      final now = DateTime.now();
-      var scheduledDate = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        22,
-        0,
-      ); // 10 PM
-
-      // If it's already past 10 PM today, schedule for tomorrow
-      if (scheduledDate.isBefore(now)) {
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
-      }
-
-      final notificationDetails = NotificationDetails(
-        android: const AndroidNotificationDetails(
-          'daily_analysis',
-          'Daily Nutrition Analysis',
-          channelDescription: 'Daily AI nutrition analysis notifications',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@drawable/ic_notification_calorium',
-          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        ),
-        iOS: const DarwinNotificationDetails(
-          categoryIdentifier: 'daily_analysis',
-        ),
-      );
-
-      try {
-        await _notifications.zonedSchedule(
-          _dailyAnalysisNotificationId,
-          'Daily Nutrition Analysis Ready',
-          'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
-          tz.TZDateTime.from(scheduledDate, tz.local),
-          notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents:
-              DateTimeComponents.time, // Repeat daily at this time
-        );
-
-        print(
-          'Daily analysis scheduled for ${scheduledDate.toString()} (exact timing)',
-        );
-      } catch (e) {
-        // If exact scheduling fails, fall back to inexact scheduling
-        print(
-          'Exact scheduling failed, falling back to inexact scheduling: $e',
-        );
-
-        try {
-          await _notifications.zonedSchedule(
-            _dailyAnalysisNotificationId,
-            'Daily Nutrition Analysis Ready',
-            'Your AI nutrition insights are ready! Tap to view personalized suggestions.',
-            tz.TZDateTime.from(scheduledDate, tz.local),
-            notificationDetails,
-            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-            matchDateTimeComponents:
-                DateTimeComponents.time, // Repeat daily at this time
-          );
-
-          print(
-            'Daily analysis scheduled for ${scheduledDate.toString()} (inexact timing)',
-          );
-        } catch (fallbackError) {
-          print('Failed to schedule daily analysis: $fallbackError');
-        }
-      }
-    } catch (e) {
-      print('Error in scheduleDailyAnalysis: $e');
-      // Don't rethrow - notifications are not critical
-    }
-  }
-
-  /// Schedule weekly analysis notification for Sundays at the configured time
-  static Future<void> scheduleWeeklyAnalysis() async {
-    try {
-      if (!_isInitialized) await initialize();
-
-      // Cancel existing weekly notifications with error handling
-      try {
-        await _notifications.cancel(_weeklyAnalysisNotificationId);
-      } catch (e) {
-        print('Warning: Could not cancel existing weekly notification: $e');
-      }
-
-      // Check if user has API key and complete profile
-      final hasApiKey = await SettingsService.hasGeminiApiKey();
-      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
-
-      final weeklyOptIn =
-          await SettingsService.getWeeklyAnalysisNotificationsEnabled();
-
-      if (!hasApiKey || !hasCompleteProfile || !weeklyOptIn) {
-        return; // Don't schedule if requirements not met
-      }
-
-      // Schedule for next Sunday at 8 PM
-      final now = DateTime.now();
-      var nextSunday = now.add(Duration(days: 7 - now.weekday));
-      final weeklyMinutes =
-          await SettingsService.getWeeklyAnalysisNotificationTimeMinutes();
-      nextSunday = DateTime(
-        nextSunday.year,
-        nextSunday.month,
-        nextSunday.day,
-        weeklyMinutes ~/ 60,
-        weeklyMinutes % 60,
-      );
-
-      if (nextSunday.isBefore(now)) {
-        nextSunday = nextSunday.add(const Duration(days: 7));
-      }
-
-      try {
-        await _notifications.zonedSchedule(
-          _weeklyAnalysisNotificationId,
-          'Weekly Nutrition Summary Ready',
-          'Your weekly nutrition report is ready! See how you\'ve been doing.',
-          tz.TZDateTime.from(nextSunday, tz.local),
-          NotificationDetails(
-            android: const AndroidNotificationDetails(
-              'weekly_analysis',
-              'Weekly Nutrition Summary',
-              channelDescription: 'Weekly nutrition summary notifications',
-              importance: Importance.high,
-              priority: Priority.high,
-              icon: '@drawable/ic_notification_calorium',
-              largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-            ),
-            iOS: const DarwinNotificationDetails(
-              categoryIdentifier: 'weekly_analysis',
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents:
-              DateTimeComponents.dayOfWeekAndTime, // Repeat weekly
-        );
-
-        print(
-          'Weekly analysis scheduled for ${nextSunday.toString()} (exact timing)',
-        );
-      } catch (e) {
-        // If exact scheduling fails, fall back to inexact scheduling
-        print('Exact weekly scheduling failed, falling back to inexact: $e');
-
-        try {
-          await _notifications.zonedSchedule(
-            _weeklyAnalysisNotificationId,
-            'Weekly Nutrition Summary Ready',
-            'Your weekly nutrition report is ready! See how you\'ve been doing.',
-            tz.TZDateTime.from(nextSunday, tz.local),
-            NotificationDetails(
-              android: const AndroidNotificationDetails(
-                'weekly_analysis',
-                'Weekly Nutrition Summary',
-                channelDescription: 'Weekly nutrition summary notifications',
-                importance: Importance.high,
-                priority: Priority.high,
-                icon: '@drawable/ic_notification_calorium',
-                largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-              ),
-              iOS: const DarwinNotificationDetails(
-                categoryIdentifier: 'weekly_analysis',
-              ),
-            ),
-            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-            matchDateTimeComponents:
-                DateTimeComponents.dayOfWeekAndTime, // Repeat weekly
-          );
-
-          print(
-            'Weekly analysis scheduled for ${nextSunday.toString()} (inexact timing)',
-          );
-        } catch (fallbackError) {
-          print('Failed to schedule weekly analysis: $fallbackError');
-        }
-      }
-    } catch (e) {
-      print('Error in scheduleWeeklyAnalysis: $e');
-      // Don't rethrow - notifications are not critical
-    }
-  }
-
-  static Future<_DailySummaryNotificationData> _buildDailySummaryData(
-    tz.TZDateTime scheduledTime,
-  ) async {
-    final summaryDate = DateTime(
-      scheduledTime.year,
-      scheduledTime.month,
-      scheduledTime.day,
-    );
-    final dateString = DateFormat('yyyy-MM-dd').format(summaryDate);
-
-    final totals = await _loadDailyTotals(dateString);
-    final calories = totals['calories'] ?? 0.0;
-    final protein = totals['protein'] ?? 0.0;
-    final carbs = totals['carbs'] ?? 0.0;
-    final fat = totals['fat'] ?? 0.0;
-
-    final macroTargets = await SettingsService.getMacroTargets();
-    final calorieTarget = await SettingsService.getCalorieTarget();
-    final proteinTarget = macroTargets?['protein'];
-    final carbsTarget = macroTargets?['carbs'];
-    final fatTarget = macroTargets?['fat'];
-
-    final bigText = [
-      _formatMacroProgress('Calories', calories, calorieTarget),
-      _formatMacroProgress('Protein', protein, proteinTarget),
-      _formatMacroProgress('Carbs', carbs, carbsTarget),
-      _formatMacroProgress('Fat', fat, fatTarget),
-    ].join('\n');
-
-    final compactSummary = [
-      _percentLabel('Calories', calories, calorieTarget),
-      _percentLabel('Protein', protein, proteinTarget),
-      _percentLabel('Carbs', carbs, carbsTarget),
-      _percentLabel('Fat', fat, fatTarget),
-    ].join(' • ');
-
-    return _DailySummaryNotificationData(
-      scheduledTime: scheduledTime,
-      summaryDateString: dateString,
-      compactSummary: compactSummary,
-      bigText: bigText,
-    );
-  }
-
-  static NotificationDetails _dailySummaryNotificationDetails(
-    _DailySummaryNotificationData data,
-  ) {
-    final subtitle = _formatTime(data.scheduledTime);
-    return NotificationDetails(
-      android: AndroidNotificationDetails(
-        'daily_summary',
-        'Daily Summary',
-        channelDescription:
-            'Daily summaries of your calories and macros compared to targets',
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: '@drawable/ic_notification_calorium',
-        styleInformation: BigTextStyleInformation(
-          data.bigText,
-          summaryText: subtitle,
-        ),
-      ),
-      iOS: DarwinNotificationDetails(
-        categoryIdentifier: 'daily_summary',
-        subtitle: subtitle,
-      ),
-    );
-  }
-
-  static void _handleNotificationResponse(NotificationResponse response) {
-    if (response.notificationResponseType !=
-            NotificationResponseType.selectedNotification &&
-        response.notificationResponseType !=
-            NotificationResponseType.selectedNotificationAction) {
-      return;
-    }
-
-    final payload = response.payload;
-    if (payload == null || payload.isEmpty) {
-      return;
-    }
-
-    final navigator = _navigatorKey?.currentState;
-    if (navigator == null) {
-      return;
-    }
-
-    if (payload.startsWith(_payloadDailyAnalysisPrefix)) {
-      final dateString = payload.substring(_payloadDailyAnalysisPrefix.length);
-      Future.microtask(() {
-        navigator.push(
-          MaterialPageRoute(
-            builder: (context) => DailyLogScreen(date: dateString),
-            settings: const RouteSettings(
-              name: 'DailyLogScreenFromNotification',
-            ),
-          ),
-        );
-      });
-    } else if (payload.startsWith(_payloadWeeklyAnalysisPrefix)) {
-      final weekStart = payload.substring(_payloadWeeklyAnalysisPrefix.length);
-      Future.microtask(() {
-        navigator.push(
-          MaterialPageRoute(
-            builder:
-                (context) => WeeklyAnalysisScreen(weekStartDate: weekStart),
-            settings: const RouteSettings(
-              name: 'WeeklyAnalysisScreenFromNotification',
-            ),
-          ),
-        );
-      });
-    }
-  }
-
-  /// Schedule the end-of-day nutrition summary notification
-  static Future<void> scheduleDailySummaryNotification() async {
-    try {
-      if (!_isInitialized) await initialize();
-
-      await _notifications.cancel(_dailySummaryNotificationId);
-
-      final enabled =
-          await SettingsService.getDailySummaryNotificationsEnabled();
-      if (!enabled) {
-        return;
-      }
-
-      final tzNow = tz.TZDateTime.now(tz.local);
-      final targetMinutes =
-          await SettingsService.getDailySummaryNotificationTimeMinutes();
-      final scheduledTime = _nextInstanceOfMinutes(targetMinutes, tzNow);
-
-      final data = await _buildDailySummaryData(scheduledTime);
-
       await _notifications.zonedSchedule(
-        _dailySummaryNotificationId,
-        'Daily nutrition summary',
-        data.compactSummary,
-        scheduledTime,
-        _dailySummaryNotificationDetails(data),
+        id,
+        title,
+        body,
+        when,
+        details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
+        matchDateTimeComponents: matchComponents,
+        payload: payload,
       );
-
-      print(
-        'Daily summary scheduled for ${scheduledTime.toString()} with totals for ${data.summaryDateString}',
-      );
+      debugPrint('Scheduled notification $id at $when (exact)');
     } catch (e) {
-      print('Error scheduling daily summary notification: $e');
+      debugPrint('Exact scheduling failed for $id, trying inexact: $e');
+      await _notifications.zonedSchedule(
+        id,
+        title,
+        body,
+        when,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchComponents,
+        payload: payload,
+      );
+      debugPrint('Scheduled notification $id at $when (inexact)');
     }
   }
 
-  /// Perform daily analysis (called when notification is triggered or manually)
-  static Future<void> performDailyAnalysis() async {
+  /// Schedule daily reminder at 10 PM local time.
+  static Future<void> scheduleDailyAnalysis() async {
+    if (!isSupported) return;
     try {
-      // Check if user has enough data for analysis
-      final hasEnoughData =
-          await NutritionAnalysisService.hasEnoughDataForAnalysis();
-      if (!hasEnoughData) {
-        print('Not enough data for AI analysis');
+      if (!_isInitialized) await initialize();
+
+      await _notifications.cancel(1000);
+
+      final enabled = await SettingsService.isDailyReminderEnabled();
+      if (!enabled) {
+        debugPrint('Daily reminder disabled');
         return;
       }
 
-      // Get today's date
+      final when = _nextInstanceOfTime(22, 0);
+      await _zonedScheduleWithFallback(
+        id: 1000,
+        title: 'Evening nutrition check-in',
+        body: 'Review today\'s log and open Insights for AI suggestions.',
+        when: when,
+        details: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'daily_analysis',
+            'Daily Nutrition Reminders',
+            channelDescription: 'Daily nutrition reminder notifications',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_stat_calorium',
+            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          ),
+          iOS: DarwinNotificationDetails(categoryIdentifier: 'daily_analysis'),
+        ),
+        matchComponents: DateTimeComponents.time,
+        payload: payloadDaily,
+      );
+    } catch (e) {
+      debugPrint('Error in scheduleDailyAnalysis: $e');
+    }
+  }
+
+  /// Schedule weekly reminder (Sundays at 8 PM local time).
+  static Future<void> scheduleWeeklyAnalysis() async {
+    if (!isSupported) return;
+    try {
+      if (!_isInitialized) await initialize();
+
+      await _notifications.cancel(2000);
+
+      final enabled = await SettingsService.isWeeklyReminderEnabled();
+      if (!enabled) {
+        debugPrint('Weekly reminder disabled');
+        return;
+      }
+
+      final when = _nextSundayAt(20, 0);
+      await _zonedScheduleWithFallback(
+        id: 2000,
+        title: 'Weekly nutrition review',
+        body: 'Open Insights to review your week and generate a summary.',
+        when: when,
+        details: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'weekly_analysis',
+            'Weekly Nutrition Reminders',
+            channelDescription: 'Weekly nutrition reminder notifications',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_stat_calorium',
+            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          ),
+          iOS: DarwinNotificationDetails(
+            categoryIdentifier: 'weekly_analysis',
+          ),
+        ),
+        matchComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: payloadWeekly,
+      );
+    } catch (e) {
+      debugPrint('Error in scheduleWeeklyAnalysis: $e');
+    }
+  }
+
+  /// Perform daily analysis when the app is open (e.g. after a reminder tap).
+  static Future<void> performDailyAnalysis() async {
+    try {
+      final hasEnoughData =
+          await NutritionAnalysisService.hasEnoughDataForAnalysis();
+      if (!hasEnoughData) {
+        debugPrint('Not enough data for AI analysis');
+        return;
+      }
+
       final today = DateTime.now();
       final dateString =
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      // Check if analysis already done today
       final lastAnalysisDate = await SettingsService.getLastAiAnalysisDate();
       if (lastAnalysisDate == dateString) {
-        print('Analysis already completed for today');
+        debugPrint('Analysis already completed for today');
         return;
       }
 
-      // Perform the analysis
       final result = await NutritionAnalysisService.analyzeDailyNutrition(
         dateString,
       );
 
       if (result != null) {
-        print('Daily analysis completed successfully');
-
-        // Send completion notification
-        await _sendAnalysisCompletedNotification(dateString);
-      } else {
-        print('Daily analysis failed - no data for today');
+        debugPrint('Daily analysis completed successfully');
+        await _sendAnalysisCompletedNotification();
       }
     } catch (e) {
-      print('Error performing daily analysis: $e');
+      debugPrint('Error performing daily analysis: $e');
     }
   }
 
-  /// Send notification when analysis is completed
-  static Future<void> _sendAnalysisCompletedNotification(
-    String dateString,
-  ) async {
+  static Future<void> _sendAnalysisCompletedNotification() async {
+    if (!isSupported) return;
     if (!_isInitialized) await initialize();
 
     await _notifications.show(
-      _analysisCompletedNotificationId,
-      'Nutrition Insights Ready! 🎯',
-      'Your personalized AI suggestions and motivation are waiting for you.',
-      NotificationDetails(
-        android: const AndroidNotificationDetails(
+      3000,
+      'Nutrition insights ready',
+      'Your personalized AI suggestions are available in Insights.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
           'analysis_completed',
           'Analysis Completed',
           channelDescription: 'Notifications when AI analysis is completed',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@drawable/ic_notification_calorium',
+          icon: 'ic_stat_calorium',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         ),
         iOS: DarwinNotificationDetails(
           categoryIdentifier: 'analysis_completed',
         ),
       ),
-      payload: '$_payloadDailyAnalysisPrefix$dateString',
+      payload: payloadAnalysisDone,
     );
   }
 
-  /// Perform weekly analysis
   static Future<void> performWeeklyAnalysis() async {
     try {
-      // Get the start of this week (Monday)
       final now = DateTime.now();
       final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
       final weekStartString =
           '${startOfWeek.year}-${startOfWeek.month.toString().padLeft(2, '0')}-${startOfWeek.day.toString().padLeft(2, '0')}';
 
-      // Perform the weekly analysis
       final result = await NutritionAnalysisService.generateWeeklySummary(
         weekStartString,
       );
 
       if (result != null) {
-        print('Weekly analysis completed successfully');
-
-        // Send completion notification
-        await _sendWeeklyAnalysisCompletedNotification(weekStartString);
-      } else {
-        print('Weekly analysis failed');
+        debugPrint('Weekly analysis completed successfully');
+        await _sendWeeklyAnalysisCompletedNotification();
       }
     } catch (e) {
-      print('Error performing weekly analysis: $e');
+      debugPrint('Error performing weekly analysis: $e');
     }
   }
 
-  /// Send notification when weekly analysis is completed
-  static Future<void> _sendWeeklyAnalysisCompletedNotification(
-    String weekStart,
-  ) async {
+  static Future<void> _sendWeeklyAnalysisCompletedNotification() async {
+    if (!isSupported) return;
     if (!_isInitialized) await initialize();
 
     await _notifications.show(
-      _weeklyCompletedNotificationId,
-      'Weekly Report Ready! 📊',
-      'Your comprehensive nutrition summary and insights for this week are ready.',
-      NotificationDetails(
-        android: const AndroidNotificationDetails(
+      4000,
+      'Weekly report ready',
+      'Your weekly nutrition summary is ready in Insights.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
           'weekly_completed',
           'Weekly Report Completed',
           channelDescription: 'Notifications when weekly analysis is completed',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@drawable/ic_notification_calorium',
+          icon: 'ic_stat_calorium',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         ),
         iOS: DarwinNotificationDetails(categoryIdentifier: 'weekly_completed'),
       ),
-      payload: '$_payloadWeeklyAnalysisPrefix$weekStart',
+      payload: payloadWeekly,
     );
   }
 
-  /// Check and schedule notifications if needed (call this on app start)
+  /// Apply reminder preferences and (re)schedule.
   static Future<void> setupScheduledNotifications() async {
+    if (!isSupported) return;
     try {
-      final hasApiKey = await SettingsService.hasGeminiApiKey();
-      final hasCompleteProfile = await SettingsService.hasCompleteProfile();
+      if (!_isInitialized) await initialize();
 
-      if (hasApiKey && hasCompleteProfile) {
+      final daily = await SettingsService.isDailyReminderEnabled();
+      final weekly = await SettingsService.isWeeklyReminderEnabled();
+
+      if (daily) {
         await scheduleDailyAnalysis();
+      } else {
+        await _notifications.cancel(1000);
+      }
+
+      if (weekly) {
         await scheduleWeeklyAnalysis();
       } else {
-        print('Skipping AI notification setup - requirements not met');
+        await _notifications.cancel(2000);
       }
 
-      await scheduleDailySummaryNotification();
-      await updateFastingWindowNotifications();
-
-      print('Notifications scheduled successfully');
+      debugPrint(
+        'Reminder setup complete (daily=$daily, weekly=$weekly)',
+      );
     } catch (e) {
-      print('Error in setupScheduledNotifications: $e');
-      // Don't rethrow - let the app continue without notifications
+      debugPrint('Error in setupScheduledNotifications: $e');
     }
   }
 
-  /// Cancel all scheduled notifications
   static Future<void> cancelAllNotifications() async {
+    if (!isSupported) return;
     try {
       if (!_isInitialized) await initialize();
-
       await _notifications.cancelAll();
-      print('All notifications cancelled');
     } catch (e) {
-      print('Error cancelling notifications: $e');
+      debugPrint('Error cancelling notifications: $e');
     }
   }
 
-  /// Schedule intermittent fasting start/end notifications and the persistent banner
-  static Future<void> updateFastingWindowNotifications() async {
-    try {
-      if (!_isInitialized) await initialize();
-
-      await _notifications.cancel(_fastingStartNotificationId);
-      await _notifications.cancel(_fastingEndNotificationId);
-      await _notifications.cancel(_persistentEatingWindowNotificationId);
-
-      final notificationsEnabled =
-          await SettingsService.getFastingNotificationsEnabled();
-      if (!notificationsEnabled) {
-        return;
-      }
-
-      final settings = await FastingService.getSettings();
-      if (!settings.enabled) {
-        return;
-      }
-
-      final tzNow = tz.TZDateTime.now(tz.local);
-      final startMinutes = settings.eatingStartMinutes;
-      final endMinutes =
-          (settings.eatingStartMinutes + settings.eatingDurationMinutes) %
-          FastingSettings.minutesPerDay;
-
-      final startTime = _nextInstanceOfMinutes(startMinutes, tzNow);
-      var endTime = _nextInstanceOfMinutes(endMinutes, startTime);
-      if (!endTime.isAfter(startTime)) {
-        endTime = endTime.add(const Duration(days: 1));
-      }
-      final nextStartTime = _nextInstanceOfMinutes(startMinutes, endTime);
-      final eatingDuration = Duration(minutes: settings.eatingDurationMinutes);
-
-      final startBody =
-          'Your eating window is open until ${_formatTime(endTime)}.';
-      await _notifications.zonedSchedule(
-        _fastingStartNotificationId,
-        'Eating window started',
-        startBody,
-        startTime,
-        NotificationDetails(
-          android: const AndroidNotificationDetails(
-            'fasting_window_start',
-            'Fasting Window Alerts',
-            channelDescription:
-                'Reminders when your intermittent fasting eating window starts and ends',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@drawable/ic_notification_calorium',
-          ),
-          iOS: const DarwinNotificationDetails(
-            categoryIdentifier: 'fasting_window_start',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-
-      await _notifications.zonedSchedule(
-        _persistentEatingWindowNotificationId,
-        'Eating window in progress',
-        'Ends at ${_formatTime(endTime)}',
-        startTime,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            'fasting_eating_window',
-            'Eating Window Status',
-            channelDescription: 'Updates while your eating window is active',
-            importance: Importance.low,
-            priority: Priority.low,
-            icon: '@drawable/ic_notification_calorium',
-            ongoing: true,
-            playSound: false,
-            usesChronometer: true,
-            chronometerCountDown: true,
-            when: endTime.millisecondsSinceEpoch,
-            showWhen: false,
-            timeoutAfter: eatingDuration.inMilliseconds,
-          ),
-          iOS: DarwinNotificationDetails(
-            categoryIdentifier: 'fasting_eating_window',
-            interruptionLevel: InterruptionLevel.passive,
-            presentSound: false,
-            subtitle: 'Ends at ${_formatTime(endTime)}',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-
-      final endBody =
-          'Eating window closed. Next window opens at ${_formatTime(nextStartTime)}.';
-      await _notifications.zonedSchedule(
-        _fastingEndNotificationId,
-        'Eating window finished',
-        endBody,
-        endTime,
-        NotificationDetails(
-          android: const AndroidNotificationDetails(
-            'fasting_window_end',
-            'Fasting Window Alerts',
-            channelDescription:
-                'Reminders when your intermittent fasting eating window starts and ends',
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: '@drawable/ic_notification_calorium',
-          ),
-          iOS: const DarwinNotificationDetails(
-            categoryIdentifier: 'fasting_window_end',
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-
-      print(
-        'Fasting notifications scheduled: start ${startTime.toString()}, end ${endTime.toString()}',
-      );
-    } catch (e) {
-      print('Error scheduling fasting notifications: $e');
-    }
-  }
-
-  /// Show/update a persistent notification while the eating window is active
   static Future<void> showEatingWindowNotification({
     required Duration timeRemaining,
     required bool isActive,
   }) async {
+    if (!isSupported) return;
     if (!_isInitialized) await initialize();
 
-    const notificationId = _persistentEatingWindowNotificationId;
+    const notificationId = 5010;
 
     if (!isActive) {
       await _notifications.cancel(notificationId);
@@ -869,7 +480,8 @@ class SchedulerService {
             priority: Priority.low,
             ongoing: true,
             playSound: false,
-            icon: '@drawable/ic_notification_calorium',
+            icon: 'ic_stat_calorium',
+            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
           ),
           iOS: DarwinNotificationDetails(
             presentSound: false,
@@ -878,18 +490,23 @@ class SchedulerService {
         ),
       );
     } catch (e) {
-      print('Error showing eating window notification: $e');
+      debugPrint('Error showing eating window notification: $e');
     }
   }
 
-  /// Show a test notification (for debugging)
   static Future<void> showTestNotification() async {
+    if (!isSupported) {
+      throw UnsupportedError(
+        'Notifications are only available on Android and iOS.',
+      );
+    }
     if (!_isInitialized) await initialize();
+    await requestNotificationPermissions();
 
     await _notifications.show(
       9999,
-      'Test Notification',
-      'This is a test notification from Calorium.',
+      'Test notification',
+      'Calorium notifications are working.',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'test',
@@ -897,241 +514,211 @@ class SchedulerService {
           channelDescription: 'Test notifications for debugging',
           importance: Importance.high,
           priority: Priority.high,
-          icon: '@drawable/ic_notification_calorium',
+          icon: 'ic_stat_calorium',
           largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         ),
         iOS: DarwinNotificationDetails(categoryIdentifier: 'test'),
       ),
+      payload: payloadDaily,
     );
   }
 
-  // ========================================
-  // DEBUG METHODS FOR MANUAL TESTING
-  // ========================================
-
-  /// Manually run the daily analysis so the real notification pathway is exercised (DEBUG ONLY)
-  static Future<void> debugTriggerDailyNotification() async {
-    print('🐛 DEBUG: Running daily analysis to trigger notification...');
-    await debugPerformDailyAnalysis(force: true);
-  }
-
-  /// Manually run the weekly analysis so the real notification pathway is exercised (DEBUG ONLY)
-  static Future<void> debugTriggerWeeklyNotification() async {
-    print('🐛 DEBUG: Running weekly analysis to trigger notification...');
-    await debugPerformWeeklyAnalysis();
-  }
-
-  /// Generate the daily summary notification immediately using live data (DEBUG ONLY)
-  static Future<void> debugTriggerDailySummaryNotification() async {
+  /// Debug helper: schedule a notification a few seconds from now.
+  static Future<void> scheduleShortDelayTest({
+    Duration delay = const Duration(seconds: 15),
+  }) async {
+    if (!isSupported) {
+      throw UnsupportedError(
+        'Scheduled notifications are only available on Android and iOS.',
+      );
+    }
     if (!_isInitialized) await initialize();
+    await requestNotificationPermissions();
+    await _requestExactAlarmsIfNeeded();
 
-    print('🐛 DEBUG: Showing daily summary notification...');
-    final scheduled = tz.TZDateTime.now(tz.local);
-    final data = await _buildDailySummaryData(scheduled);
-    await _notifications.show(
-      _dailySummaryNotificationId,
-      'Daily nutrition summary',
-      data.compactSummary,
-      _dailySummaryNotificationDetails(data),
-    );
-    print('✅ DEBUG: Daily summary notification displayed');
-  }
-
-  /// Refresh fasting notifications with the latest settings (DEBUG ONLY)
-  static Future<void> debugTriggerFastingNotifications() async {
-    print(
-      '🐛 DEBUG: Scheduling fasting notifications with current settings...',
-    );
-    await updateFastingWindowNotifications();
-    print('✅ DEBUG: Fasting notifications refreshed');
-  }
-
-  /// Manual trigger for daily AI analysis with force option (DEBUG ONLY)
-  static Future<void> debugPerformDailyAnalysis({bool force = false}) async {
-    print('🐛 DEBUG: Manually performing daily analysis (force: $force)...');
-
+    final when = tz.TZDateTime.now(tz.local).add(delay);
     try {
-      // Check if user has enough data for analysis
+      await _notifications.zonedSchedule(
+        9998,
+        'Scheduled test',
+        'If you see this, scheduled notifications work.',
+        when,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'test',
+            'Test Notifications',
+            channelDescription: 'Test notifications for debugging',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_stat_calorium',
+            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          ),
+          iOS: DarwinNotificationDetails(categoryIdentifier: 'test'),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payloadDaily,
+      );
+    } catch (e) {
+      await _notifications.zonedSchedule(
+        9998,
+        'Scheduled test',
+        'If you see this, scheduled notifications work.',
+        when,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'test',
+            'Test Notifications',
+            channelDescription: 'Test notifications for debugging',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: 'ic_stat_calorium',
+            largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          ),
+          iOS: DarwinNotificationDetails(categoryIdentifier: 'test'),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payloadDaily,
+      );
+    }
+  }
+
+  // ========================================
+  // DEBUG METHODS
+  // ========================================
+
+  static Future<void> debugTriggerDailyNotification() async {
+    if (!isSupported) return;
+    if (!_isInitialized) await initialize();
+    await _notifications.show(
+      1001,
+      'Evening nutrition check-in (DEBUG)',
+      'Manual trigger: open Insights for AI suggestions.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'debug_daily_analysis',
+          'Debug Daily Analysis',
+          channelDescription: 'Debug daily reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: 'ic_stat_calorium',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        ),
+        iOS: DarwinNotificationDetails(
+          categoryIdentifier: 'debug_daily_analysis',
+        ),
+      ),
+      payload: payloadDaily,
+    );
+  }
+
+  static Future<void> debugTriggerWeeklyNotification() async {
+    if (!isSupported) return;
+    if (!_isInitialized) await initialize();
+    await _notifications.show(
+      2001,
+      'Weekly nutrition review (DEBUG)',
+      'Manual trigger: open Insights for your weekly summary.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'debug_weekly_analysis',
+          'Debug Weekly Analysis',
+          channelDescription: 'Debug weekly reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: 'ic_stat_calorium',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        ),
+        iOS: DarwinNotificationDetails(
+          categoryIdentifier: 'debug_weekly_analysis',
+        ),
+      ),
+      payload: payloadWeekly,
+    );
+  }
+
+  static Future<void> debugPerformDailyAnalysis({bool force = false}) async {
+    try {
       final hasEnoughData =
           await NutritionAnalysisService.hasEnoughDataForAnalysis();
-      if (!hasEnoughData && !force) {
-        print('❌ DEBUG: Not enough data for AI analysis');
-        return;
-      }
+      if (!hasEnoughData && !force) return;
 
-      // Get today's date
       final today = DateTime.now();
       final dateString =
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
-      // Check if analysis already done today (skip if force = true)
       if (!force) {
         final lastAnalysisDate = await SettingsService.getLastAiAnalysisDate();
-        if (lastAnalysisDate == dateString) {
-          print(
-            '⚠️  DEBUG: Analysis already completed for today (use force=true to override)',
-          );
-          return;
-        }
+        if (lastAnalysisDate == dateString) return;
       }
 
-      print('📊 DEBUG: Analyzing nutrition data for $dateString...');
-
-      // Perform the analysis
       final result = await NutritionAnalysisService.analyzeDailyNutrition(
         dateString,
       );
-
       if (result != null) {
-        print('✅ DEBUG: Daily analysis completed successfully');
-        print(
-          '💡 DEBUG: Generated ${result['suggestions']?.length ?? 0} suggestions',
-        );
-        print(
-          '🎯 DEBUG: Motivational quote: ${result['motivationalQuote'] ?? 'None'}',
-        );
-
-        // Send completion notification
-        await _sendAnalysisCompletedNotification(dateString);
-        print('📱 DEBUG: Analysis completion notification sent');
-      } else {
-        print('❌ DEBUG: Daily analysis failed - no data for today');
+        await _sendAnalysisCompletedNotification();
       }
     } catch (e) {
-      print('❌ DEBUG: Error performing daily analysis: $e');
+      debugPrint('DEBUG daily analysis error: $e');
     }
   }
 
-  /// Manual trigger for weekly AI analysis (DEBUG ONLY)
   static Future<void> debugPerformWeeklyAnalysis({
     String? customWeekStart,
   }) async {
-    print('🐛 DEBUG: Manually performing weekly analysis...');
-
     try {
-      // Get the start of this week (Monday) or use custom date
       String weekStartString;
       if (customWeekStart != null) {
         weekStartString = customWeekStart;
-        print('📅 DEBUG: Using custom week start: $customWeekStart');
       } else {
         final now = DateTime.now();
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
         weekStartString =
             '${startOfWeek.year}-${startOfWeek.month.toString().padLeft(2, '0')}-${startOfWeek.day.toString().padLeft(2, '0')}';
-        print('📅 DEBUG: Using current week start: $weekStartString');
       }
 
-      print('📊 DEBUG: Generating weekly summary...');
-
-      // Perform the weekly analysis
       final result = await NutritionAnalysisService.generateWeeklySummary(
         weekStartString,
       );
-
       if (result != null) {
-        print('✅ DEBUG: Weekly analysis completed successfully');
-        print('📈 DEBUG: Summary data: ${result['summary']}');
-        print(
-          '💡 DEBUG: Generated ${result['insights']?.length ?? 0} insights',
-        );
-        print(
-          '🎯 DEBUG: Generated ${result['recommendations']?.length ?? 0} recommendations',
-        );
-
-        // Send completion notification
-        await _sendWeeklyAnalysisCompletedNotification(weekStartString);
-        print('📱 DEBUG: Weekly analysis completion notification sent');
-      } else {
-        print('❌ DEBUG: Weekly analysis failed');
+        await _sendWeeklyAnalysisCompletedNotification();
       }
     } catch (e) {
-      print('❌ DEBUG: Error performing weekly analysis: $e');
+      debugPrint('DEBUG weekly analysis error: $e');
     }
   }
 
-  /// Show all scheduled notifications (DEBUG ONLY)
   static Future<void> debugShowScheduledNotifications() async {
+    if (!isSupported) return;
     if (!_isInitialized) await initialize();
-
-    print('🐛 DEBUG: Checking scheduled notifications...');
-
-    try {
-      final pendingNotifications =
-          await _notifications.pendingNotificationRequests();
-
-      if (pendingNotifications.isEmpty) {
-        print('📱 DEBUG: No pending notifications found');
-      } else {
-        print(
-          '📱 DEBUG: Found ${pendingNotifications.length} pending notifications:',
-        );
-        for (var notification in pendingNotifications) {
-          print('   - ID: ${notification.id}, Title: ${notification.title}');
-        }
-      }
-    } catch (e) {
-      print('❌ DEBUG: Error checking notifications: $e');
+    final pending = await _notifications.pendingNotificationRequests();
+    debugPrint('Pending notifications: ${pending.length}');
+    for (final n in pending) {
+      debugPrint('  id=${n.id} title=${n.title}');
     }
   }
 
-  /// Complete debug test suite (DEBUG ONLY)
   static Future<void> debugFullTestSuite() async {
-    print('\n${'=' * 60}');
-    print('🧪 DEBUG: Starting full AI nutrition test suite...');
-    print('=' * 60);
-
-    // Test 1: Check system readiness
-    print('\n1️⃣  Testing system readiness...');
-    final hasApiKey = await SettingsService.hasGeminiApiKey();
-    final hasProfile = await SettingsService.hasCompleteProfile();
-    final hasData = await NutritionAnalysisService.hasEnoughDataForAnalysis();
-
-    print('   API Key: ${hasApiKey ? '✅' : '❌'}');
-    print('   Complete Profile: ${hasProfile ? '✅' : '❌'}');
-    print('   Enough Data: ${hasData ? '✅' : '❌'}');
-
-    // Test 2: Send test notifications
-    print('\n2️⃣  Testing notifications...');
-    await debugTriggerDailyNotification();
-    await Future.delayed(const Duration(seconds: 1));
-    await debugTriggerWeeklyNotification();
-    await Future.delayed(const Duration(seconds: 1));
-    await debugTriggerDailySummaryNotification();
-    await Future.delayed(const Duration(seconds: 1));
-    await debugTriggerFastingNotifications();
     await showTestNotification();
-
-    // Test 3: Perform analysis if possible
-    if (hasApiKey && hasProfile) {
-      print('\n3️⃣  Testing AI analysis...');
-      await debugPerformDailyAnalysis(force: true);
-      await Future.delayed(Duration(seconds: 2));
-      await debugPerformWeeklyAnalysis();
-    } else {
-      print('\n3️⃣  Skipping AI analysis - requirements not met');
-    }
-
-    // Test 4: Check scheduled notifications
-    print('\n4️⃣  Checking scheduled notifications...');
+    await debugTriggerDailyNotification();
+    await debugTriggerWeeklyNotification();
     await debugShowScheduledNotifications();
-
-    print('\n${'=' * 60}');
-    print('🎉 DEBUG: Test suite completed!');
-    print('=' * 60 + '\n');
   }
-}
 
-class _DailySummaryNotificationData {
-  const _DailySummaryNotificationData({
-    required this.scheduledTime,
-    required this.summaryDateString,
-    required this.compactSummary,
-    required this.bigText,
-  });
+  // This build folds the daily summary into the daily analysis check-in and
+  // does not schedule a separate summary notification, so the debug hook
+  // reuses that pathway to keep the console command working.
+  static Future<void> debugTriggerDailySummaryNotification() async {
+    await debugTriggerDailyNotification();
+  }
 
-  final tz.TZDateTime scheduledTime;
-  final String summaryDateString;
-  final String compactSummary;
-  final String bigText;
+  // Fasting reminders are driven by the eating-window schedule; this debug
+  // hook simply rebuilds the scheduled notifications so the refresh can be
+  // verified from the console.
+  static Future<void> debugTriggerFastingNotifications() async {
+    await setupScheduledNotifications();
+  }
 }

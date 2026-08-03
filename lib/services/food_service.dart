@@ -130,6 +130,18 @@ class FoodService {
     }
   }
   
+  Future<Food?> getFoodById(int id) async {
+    final db = await DatabaseService.instance.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'foods',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Food.fromMap(maps.first);
+  }
+
   Future<int> insertFood(Food food) async {
     final db = await DatabaseService.instance.database;
     return await db.insert('foods', food.toMap());
