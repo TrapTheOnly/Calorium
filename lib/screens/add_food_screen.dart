@@ -39,6 +39,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   bool _hasServing = false; // Whether a distinct serving size is defined
   List<String> _selectedTags = [];
   List<String> _availableTags = [];
+  TimeOfDay _selectedTime = const TimeOfDay(hour: 14, minute: 0);
 
   /// Standard household volumes (US) for liquid serving presets.
   static const Map<String, double> _volumePresetsMl = {
@@ -84,6 +85,55 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     if (widget.date != null) {
       _amountController.text = "100";
       _portionsController.text = "1";
+
+      // Pick sensible default time: now if logging for today, else 2 PM
+      try {
+        final parsed = DateTime.parse(widget.date!);
+        final now = DateTime.now();
+        final isToday =
+            parsed.year == now.year && parsed.month == now.month && parsed.day == now.day;
+        _selectedTime = isToday
+            ? TimeOfDay(hour: now.hour, minute: now.minute)
+            : const TimeOfDay(hour: 14, minute: 0);
+      } catch (_) {
+        final now = DateTime.now();
+        _selectedTime = TimeOfDay(hour: now.hour, minute: now.minute);
+      }
+    }
+  }
+
+  Future<void> _pickLogTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedTime = picked;
+      });
+    }
+  }
+
+  DateTime _combineDateWithSelectedTime(String date) {
+    try {
+      final parsed = DateTime.parse(date);
+      return DateTime(
+        parsed.year,
+        parsed.month,
+        parsed.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
+    } catch (_) {
+      final now = DateTime.now();
+      return DateTime(
+        now.year,
+        now.month,
+        now.day,
+        _selectedTime.hour,
+        _selectedTime.minute,
+      );
     }
   }
 
@@ -303,6 +353,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
       amount: amount,
       portions: portions,
       date: widget.date!,
+      loggedAt: _combineDateWithSelectedTime(widget.date!),
     );
 
     await _logService.insertLogEntry(entry);
@@ -373,6 +424,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
         amount: amount,
         portions: portions,
         date: widget.date!,
+        loggedAt: _combineDateWithSelectedTime(widget.date!),
       );
 
       await _logService.insertLogEntry(entry);
@@ -926,6 +978,79 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                         ],
                       ),
                     ],
+                  ),
+                ),
+
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: _pickLogTime,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.schedule,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Time Eaten',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                MaterialLocalizations.of(
+                                  context,
+                                ).formatTimeOfDay(_selectedTime),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.edit_outlined,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 

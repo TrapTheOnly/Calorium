@@ -707,4 +707,18 @@ class SchedulerService {
     await debugTriggerWeeklyNotification();
     await debugShowScheduledNotifications();
   }
+
+  // This build folds the daily summary into the daily analysis check-in and
+  // does not schedule a separate summary notification, so the debug hook
+  // reuses that pathway to keep the console command working.
+  static Future<void> debugTriggerDailySummaryNotification() async {
+    await debugTriggerDailyNotification();
+  }
+
+  // Fasting reminders are driven by the eating-window schedule; this debug
+  // hook simply rebuilds the scheduled notifications so the refresh can be
+  // verified from the console.
+  static Future<void> debugTriggerFastingNotifications() async {
+    await setupScheduledNotifications();
+  }
 }
