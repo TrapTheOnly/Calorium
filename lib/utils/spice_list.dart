@@ -63,24 +63,46 @@ class SpiceList {
     'bouillon',
   };
 
+  static final RegExp _caloricWord = RegExp(
+    r'\b(sugar|honey|syrup|molasses|aminos|oil|milk|flour|butter)\b',
+  );
+
+  static final RegExp _coconutProduct = RegExp(
+    r'\b(powder|milk|flake|flakes|oil|sugar|cream|water|butter)\b',
+  );
+
+  static final RegExp _spiceBlend = RegExp(
+    r'\b(spice|spices|seasoning|masala|blend)\b',
+  );
+
   /// True when the ingredient name reads as a spice/seasoning.
   static bool isSpice(String name) {
     final normalized = name.toLowerCase().trim();
     if (normalized.isEmpty) return false;
-    if (keywords.contains(normalized)) return true;
+    if (_isCaloricIngredient(normalized)) return false;
+
     for (final keyword in keywords) {
-      // Match whole-word occurrences (e.g. "ground black pepper").
-      if (normalized == keyword ||
-          normalized.contains(' $keyword') ||
-          normalized.contains('$keyword ') ||
-          normalized.endsWith(keyword)) {
-        // Avoid false positives like "salted butter" or "peppermint".
-        if (keyword == 'salt' && normalized.contains('salted')) continue;
-        if (keyword == 'mint' && normalized.contains('peppermint')) continue;
-        if (keyword == 'pepper' && normalized.contains('bell pepper')) continue;
-        return true;
+      if (!_hasKeyword(normalized, keyword)) continue;
+      // Whole-food names that happen to contain a spice word.
+      if (keyword == 'pepper' && _hasKeyword(normalized, 'bell pepper')) {
+        continue;
       }
+      return true;
     }
     return false;
+  }
+
+  static bool _isCaloricIngredient(String normalized) {
+    if (_caloricWord.hasMatch(normalized)) return true;
+    if (!normalized.contains('coconut')) return false;
+    // Coconut powder/milk/flakes/oil/sugar are foods, not spices.
+    if (_coconutProduct.hasMatch(normalized)) return true;
+    // A named coconut spice blend is still a seasoning.
+    if (_spiceBlend.hasMatch(normalized)) return false;
+    return true;
+  }
+
+  static bool _hasKeyword(String normalized, String keyword) {
+    return RegExp('\\b${RegExp.escape(keyword)}\\b').hasMatch(normalized);
   }
 }

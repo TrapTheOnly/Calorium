@@ -36,6 +36,28 @@ class ResolvedVideo {
     this.thumbnailPath,
   });
 
+  /// Returns a copy with selected fields replaced. Used when the user pastes a
+  /// caption after the resolver could not read one from the post.
+  ResolvedVideo copyWith({
+    VideoPlatform? platform,
+    String? sourceUrl,
+    String? title,
+    String? caption,
+    String? topComment,
+    String? videoLocalPath,
+    String? thumbnailPath,
+  }) {
+    return ResolvedVideo(
+      platform: platform ?? this.platform,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      title: title ?? this.title,
+      caption: caption ?? this.caption,
+      topComment: topComment ?? this.topComment,
+      videoLocalPath: videoLocalPath ?? this.videoLocalPath,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+    );
+  }
+
   /// The combined text block handed to the AI for recipe extraction.
   String get combinedText {
     final buffer = StringBuffer();

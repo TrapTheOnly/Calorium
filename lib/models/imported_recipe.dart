@@ -73,6 +73,42 @@ class ImportedRecipe {
     };
   }
 
+  ImportedRecipe copyWith({
+    int? id,
+    int? foodId,
+    String? name,
+    String? platform,
+    String? sourceUrl,
+    String? videoPath,
+    String? thumbnailPath,
+    String? description,
+    List<String>? instructions,
+    int? servings,
+    int? prepTimeMinutes,
+    int? cookTimeMinutes,
+    String? difficulty,
+    List<String>? tags,
+    DateTime? createdAt,
+  }) {
+    return ImportedRecipe(
+      id: id ?? this.id,
+      foodId: foodId ?? this.foodId,
+      name: name ?? this.name,
+      platform: platform ?? this.platform,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      videoPath: videoPath ?? this.videoPath,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+      description: description ?? this.description,
+      instructions: instructions ?? this.instructions,
+      servings: servings ?? this.servings,
+      prepTimeMinutes: prepTimeMinutes ?? this.prepTimeMinutes,
+      cookTimeMinutes: cookTimeMinutes ?? this.cookTimeMinutes,
+      difficulty: difficulty ?? this.difficulty,
+      tags: tags ?? this.tags,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   factory ImportedRecipe.fromMap(Map<String, dynamic> map, {String? name}) {
     String? nullable(dynamic v) {
       final s = v?.toString() ?? '';
