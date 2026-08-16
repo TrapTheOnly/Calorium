@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'calories.db');
     return await openDatabase(
       path,
-      version: 9, // v9: track which logs were mirrored to Health Connect
+      version: 10, // v10: persist original imported ingredient lines
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -94,6 +94,7 @@ class DatabaseService {
     ''');
 
     await db.execute(_createImportedRecipeMetaSql);
+    await db.execute(_createImportedIngredientLinesSql);
   }
 
   /// Metadata for recipes imported from a shared video link.
@@ -118,6 +119,29 @@ class DatabaseService {
       tags TEXT DEFAULT '',
       createdAt INTEGER NOT NULL,
       FOREIGN KEY (foodId) REFERENCES foods (id) ON DELETE CASCADE
+    )
+  ''';
+
+  /// Original parsed ingredient lines for an imported recipe, including
+  /// skipped/spice/estimated rows that never become inventory components.
+  static const String _createImportedIngredientLinesSql = '''
+    CREATE TABLE imported_ingredient_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipeFoodId INTEGER NOT NULL,
+      parsedName TEXT NOT NULL,
+      amountText TEXT DEFAULT '',
+      amountGrams REAL NOT NULL,
+      unit TEXT DEFAULT 'g',
+      isSpice INTEGER DEFAULT 0,
+      notes TEXT DEFAULT '',
+      matchType TEXT NOT NULL,
+      linkedFoodId INTEGER,
+      estimatedCalories REAL,
+      estimatedProtein REAL,
+      estimatedCarbs REAL,
+      estimatedFat REAL,
+      sortOrder INTEGER DEFAULT 0,
+      FOREIGN KEY (recipeFoodId) REFERENCES foods (id) ON DELETE CASCADE
     )
   ''';
 
@@ -236,6 +260,10 @@ class DatabaseService {
       // access was already granted they are marked synced without rewriting;
       // otherwise they are backfilled. New inserts set syncedHealth=0 explicitly.
       await db.execute('ALTER TABLE logs ADD COLUMN syncedHealth INTEGER');
+    }
+
+    if (oldVersion <= 9 && newVersion >= 10) {
+      await db.execute(_createImportedIngredientLinesSql);
     }
   }
 }

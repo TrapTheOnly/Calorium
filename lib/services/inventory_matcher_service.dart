@@ -40,17 +40,18 @@ class IngredientMatch {
 ///     edit-distance scan over all foods.
 ///  3. Score each candidate with a weighted blend of IDF-weighted token overlap,
 ///     normalized Levenshtein similarity, and a substring/prefix bonus.
-///  4. Classify by the top score (strong / weak / none) and return the top-K.
+///  4. Penalize form mismatches (powder vs milk vs oil) so they cannot auto-select.
+///  5. Classify by the top score (strong / weak / none) and return the top-K.
 class InventoryMatcher {
-  static const double autoThreshold = 0.72;
+  static const double autoThreshold = 0.85;
   static const double minThreshold = 0.35;
 
   static const Set<String> _stopWords = {
     'of', 'the', 'a', 'an', 'and', 'with', 'to', 'for', 'in',
-    'fresh', 'chopped', 'diced', 'sliced', 'minced', 'ground', 'raw', 'cooked',
+    'fresh', 'chopped', 'diced', 'sliced', 'minced', 'raw', 'cooked',
     'large', 'small', 'medium', 'boneless', 'skinless', 'ripe', 'whole',
-    'dried', 'frozen', 'canned', 'organic', 'lean', 'extra', 'virgin',
-    'peeled', 'grated', 'shredded', 'crushed', 'finely', 'roughly',
+    'frozen', 'canned', 'organic', 'lean', 'extra', 'virgin',
+    'peeled', 'crushed', 'finely', 'roughly',
     // measurement words that add no matching signal
     'cup', 'cups', 'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon',
     'teaspoons', 'g', 'kg', 'gram', 'grams', 'ml', 'l', 'oz', 'lb', 'pinch',
@@ -59,6 +60,7 @@ class InventoryMatcher {
 
   final List<Food> foods;
   final List<Set<String>> _tokenSets = [];
+  final List<Set<String>> _formSets = [];
   final List<String> _normalized = [];
   final Map<String, Set<int>> _invertedIndex = {};
   final Map<String, double> _idf = {};
@@ -73,6 +75,7 @@ class InventoryMatcher {
       final tokens = _tokenize(norm);
       _normalized.add(norm);
       _tokenSets.add(tokens);
+      _formSets.add(_formTokens(norm));
       for (final token in tokens) {
         _invertedIndex.putIfAbsent(token, () => <int>{}).add(i);
       }
@@ -115,6 +118,11 @@ class InventoryMatcher {
   double _score(String queryNorm, Set<String> queryTokens, int foodId) {
     final foodNorm = _normalized[foodId];
     final foodTokens = _tokenSets[foodId];
+    final queryForms = _formTokens(queryNorm);
+    final foodForms = _formSets[foodId];
+    final formsMatch = _setEquals(queryForms, foodForms);
+    final queryCovered = queryTokens.isNotEmpty &&
+        queryTokens.every(foodTokens.contains);
 
     if (queryNorm.isEmpty || foodNorm.isEmpty) return 0;
     if (queryNorm == foodNorm) return 1.0;
@@ -136,9 +144,12 @@ class InventoryMatcher {
     // Normalized Levenshtein similarity on the full strings.
     final lev = _levenshteinSimilarity(queryNorm, foodNorm);
 
-    // Substring / prefix bonus.
+    // Substring / prefix bonus. Do not award 1.0 when token sets differ
+    // because of a missing form (e.g. "coconut" inside "coconut powder").
     double substring = 0;
-    if (foodNorm.contains(queryNorm) || queryNorm.contains(foodNorm)) {
+    final contained =
+        foodNorm.contains(queryNorm) || queryNorm.contains(foodNorm);
+    if (contained && formsMatch && queryCovered) {
       substring = 1.0;
     } else if (foodTokens.any(
       (t) => queryTokens.any((q) => t.startsWith(q) || q.startsWith(t)),
@@ -147,7 +158,17 @@ class InventoryMatcher {
     }
 
     final tokenScore = (0.7 * coverage) + (0.3 * jaccard);
-    final score = (0.6 * tokenScore) + (0.3 * lev) + (0.1 * substring);
+    var score = (0.6 * tokenScore) + (0.3 * lev) + (0.1 * substring);
+
+    if (!formsMatch) {
+      // Form mismatch (powder vs milk vs flakes vs oil, or form vs none).
+      score *= 0.15;
+    } else if (queryCovered) {
+      // True equivalent: distinctive query tokens (including form) are
+      // covered. Food may add modifiers (unsweetened, extra virgin).
+      score = math.max(score, autoThreshold);
+    }
+
     return score.clamp(0.0, 1.0);
   }
 
@@ -173,7 +194,48 @@ class InventoryMatcher {
     return tokens;
   }
 
+  Set<String> _formTokens(String normalized) {
+    final forms = <String>{};
+    for (final raw in normalized.split(' ')) {
+      if (raw.isEmpty) continue;
+      final canonical = _canonicalForm(raw);
+      if (canonical != null) forms.add(canonical);
+    }
+    return forms;
+  }
+
+  String? _canonicalForm(String word) {
+    final direct = _formCanonical[word];
+    if (direct != null) return direct;
+    return _formCanonical[_singularize(word)];
+  }
+
+  static const Map<String, String> _formCanonical = {
+    'powder': 'powder',
+    'milk': 'milk',
+    'oil': 'oil',
+    'flour': 'flour',
+    'flake': 'flake',
+    'flakes': 'flake',
+    'flak': 'flake',
+    'cream': 'cream',
+    'butter': 'butter',
+    'sugar': 'sugar',
+    'juice': 'juice',
+    'sauce': 'sauce',
+    'paste': 'paste',
+    'water': 'water',
+    'yogurt': 'yogurt',
+    'yoghurt': 'yogurt',
+    'cheese': 'cheese',
+    'chees': 'cheese',
+    'desiccated': 'desiccated',
+    'shredded': 'shredded',
+    'extract': 'extract',
+  };
+
   String _singularize(String word) {
+    if (word == 'flakes') return 'flake';
     if (word.length > 3 && word.endsWith('ies')) {
       return '${word.substring(0, word.length - 3)}y';
     }
@@ -184,6 +246,11 @@ class InventoryMatcher {
       return word.substring(0, word.length - 1);
     }
     return word;
+  }
+
+  bool _setEquals(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    return a.containsAll(b);
   }
 
   double _levenshteinSimilarity(String a, String b) {

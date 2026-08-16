@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/food.dart';
 import '../models/custom_recipe.dart';
+import '../models/imported_recipe.dart';
 import '../services/food_service.dart';
 import '../services/custom_recipe_service.dart';
 import '../services/imported_recipe_service.dart';
+import '../widgets/import_recipe_url_sheet.dart';
 import '../utils/app_layout.dart';
 import '../theme/app_theme.dart';
 import '../utils/num_format.dart';
@@ -47,6 +49,8 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
   Set<int> _importedFoodIds = {};
   List<CustomRecipe> _allCustomRecipes = [];
   List<CustomRecipe> _filteredCustomRecipes = [];
+  List<ImportedRecipe> _allImportedRecipes = [];
+  List<ImportedRecipe> _filteredImportedRecipes = [];
   
   // Tag management for simple foods
   List<String> _availableTags = [];
@@ -96,7 +100,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           }
           break;
         case 2:
-          if (_allCustomRecipes.isEmpty && !_isLoadingRecipes) {
+          if (_allCustomRecipes.isEmpty &&
+              _allImportedRecipes.isEmpty &&
+              !_isLoadingRecipes) {
             _loadCustomRecipes();
             _loadAvailableRecipeTags();
           }
@@ -188,10 +194,12 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     
     try {
       final recipes = await CustomRecipeService.getAllCustomRecipes();
+      final imported = await ImportedRecipeService.getAll();
       
       if (mounted) {
         setState(() {
           _allCustomRecipes = recipes;
+          _allImportedRecipes = imported;
           _isLoadingRecipes = false;
         });
         _filterCustomRecipes();
@@ -243,10 +251,15 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     
     try {
       final tags = await CustomRecipeService.getAllCustomRecipeTags();
+      final imported = _allImportedRecipes.isEmpty
+          ? await ImportedRecipeService.getAll()
+          : _allImportedRecipes;
+      final importedTags = imported.expand((r) => r.tags);
+      final merged = {...tags, ...importedTags}.toList()..sort();
       
       if (mounted) {
         setState(() {
-          _availableRecipeTags = tags;
+          _availableRecipeTags = merged;
           _isLoadingRecipeTags = false;
         });
       }
@@ -289,11 +302,29 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         final matchesSearch = query.isEmpty || 
                recipe.name.toLowerCase().contains(query) ||
                recipe.description.toLowerCase().contains(query) ||
-               recipe.ingredients.join(' ').toLowerCase().contains(query);
+               recipe.ingredients.join(' ').toLowerCase().contains(query) ||
+               recipe.tags.any((tag) => tag.toLowerCase().contains(query));
         final matchesTags = _selectedRecipeTags.isEmpty || _selectedRecipeTags.every((tag) => recipe.tags.contains(tag));
         return matchesSearch && matchesTags;
       }).toList();
+      _filteredImportedRecipes = _allImportedRecipes.where((recipe) {
+        final matchesSearch = query.isEmpty ||
+            recipe.name.toLowerCase().contains(query) ||
+            recipe.description.toLowerCase().contains(query) ||
+            recipe.tags.any((tag) => tag.toLowerCase().contains(query));
+        final matchesTags = _selectedRecipeTags.isEmpty ||
+            _selectedRecipeTags.every((tag) => recipe.tags.contains(tag));
+        return matchesSearch && matchesTags;
+      }).toList();
     });
+  }
+
+  Future<void> _openImportFromLink() async {
+    await ImportRecipeUrlSheet.show(context);
+    if (!mounted) return;
+    _loadCompoundFoods();
+    _loadCustomRecipes();
+    _loadAvailableRecipeTags();
   }
   
   void _toggleTag(String tag) {
@@ -553,32 +584,58 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
               ],
             );
           case 1:
-            return FloatingActionButton.extended(
-              heroTag: 'inv_add',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AddCompoundScreen(),
-                  ),
-                ).then((_) => _loadCompoundFoods());
-              },
-              icon: const Icon(Icons.layers_rounded),
-              label: const Text('Add recipe'),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'inv_import',
+                  tooltip: 'Import from link',
+                  onPressed: _openImportFromLink,
+                  child: const Icon(Icons.link_rounded),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'inv_add',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AddCompoundScreen(),
+                      ),
+                    ).then((_) => _loadCompoundFoods());
+                  },
+                  icon: const Icon(Icons.layers_rounded),
+                  label: const Text('Add recipe'),
+                ),
+              ],
             );
           case 2:
-            return FloatingActionButton.extended(
-              heroTag: 'inv_add',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AiMealPlannerScreen(),
-                  ),
-                ).then((_) => _loadCustomRecipes());
-              },
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('New AI recipe'),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'inv_import_ai',
+                  tooltip: 'Import from link',
+                  onPressed: _openImportFromLink,
+                  child: const Icon(Icons.link_rounded),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'inv_add',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AiMealPlannerScreen(),
+                      ),
+                    ).then((_) => _loadCustomRecipes());
+                  },
+                  icon: const Icon(Icons.auto_awesome_rounded),
+                  label: const Text('New AI recipe'),
+                ),
+              ],
             );
           default:
             return const SizedBox.shrink();
@@ -786,8 +843,19 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openImportFromLink,
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('Import from link'),
+            ),
+          ),
+        ),
         
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
         
         // Food list with animations
         Expanded(
@@ -814,7 +882,7 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           child: TextField(
             controller: _recipesSearchController,
             decoration: InputDecoration(
-              hintText: 'Search AI recipes...',
+              hintText: 'Search recipes...',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _recipesSearchController.text.isNotEmpty
                   ? IconButton(
@@ -841,8 +909,19 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openImportFromLink,
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('Import from link'),
+            ),
+          ),
+        ),
         
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
         
         // Tags section for recipes
         if (_availableRecipeTags.isNotEmpty) ...[
@@ -1183,8 +1262,13 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         child: CircularProgressIndicator(),
       );
     }
+
+    final hasFilter = _recipesSearchController.text.isNotEmpty ||
+        _selectedRecipeTags.isNotEmpty;
+    final hasImported = _filteredImportedRecipes.isNotEmpty;
+    final hasCustom = _filteredCustomRecipes.isNotEmpty;
     
-    if (_filteredCustomRecipes.isEmpty) {
+    if (!hasImported && !hasCustom) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1196,9 +1280,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 16),
             Text(
-              _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
-                  ? 'No AI recipes match your search'
-                  : 'No AI recipes yet',
+              hasFilter
+                  ? 'No recipes match your search'
+                  : 'No recipes yet',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -1207,9 +1291,9 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 8),
             Text(
-              _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
+              hasFilter
                   ? 'Try adjusting your search or filters'
-                  : 'Create your first AI-generated recipe using the meal planner',
+                  : 'Import a recipe from a link or create one with the meal planner',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
               ),
@@ -1217,20 +1301,14 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty
+              onPressed: hasFilter
                   ? () {
                       _recipesSearchController.clear();
                       _clearAllRecipeTags();
                     }
-                  : () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AiMealPlannerScreen()),
-                      ).then((_) {
-                        _loadCustomRecipes();
-                        _loadAvailableRecipeTags();
-                      }),
-              icon: Icon(_recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty ? Icons.clear : Icons.add),
-              label: Text(_recipesSearchController.text.isNotEmpty || _selectedRecipeTags.isNotEmpty ? 'Clear Search & Filters' : 'Create First Recipe'),
+                  : _openImportFromLink,
+              icon: Icon(hasFilter ? Icons.clear : Icons.link_rounded),
+              label: Text(hasFilter ? 'Clear Search & Filters' : 'Import from link'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -1243,58 +1321,140 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
         ),
       );
     }
+
+    final children = <Widget>[
+      if (hasImported) ...[
+        const SectionHeader(title: 'Imported'),
+        ..._filteredImportedRecipes.map(_buildImportedRecipeCard),
+      ],
+      if (hasCustom) ...[
+        if (hasImported) const SectionHeader(title: 'AI recipes'),
+        ..._filteredCustomRecipes.map(_buildRecipeCard),
+      ],
+    ];
     
     return RefreshIndicator(
       onRefresh: () async {
         _loadCustomRecipes();
         _loadAvailableRecipeTags();
       },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        switchInCurve: Curves.easeInOutCubic,
-        switchOutCurve: Curves.easeInOutCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return SlideTransition(
-            position: animation.drive(
-              Tween(
-                begin: const Offset(0.0, 0.1),
-                end: Offset.zero,
-              ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 96),
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildImportedRecipeCard(ImportedRecipe recipe) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final totalMin = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
+    final tagPeek = recipe.tags.take(2).join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ImportedRecipeDetailScreen(recipe: recipe),
             ),
-            child: FadeTransition(
-              opacity: animation,
-              child: child,
-            ),
-          );
+          ).then((_) {
+            _loadCustomRecipes();
+            _loadCompoundFoods();
+            _loadAvailableRecipeTags();
+          });
         },
-      child: ListView.builder(
-          key: ValueKey(_filteredCustomRecipes.length), // Key changes when list changes
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          itemCount: _filteredCustomRecipes.length,
-        itemBuilder: (context, index) {
-            final recipe = _filteredCustomRecipes[index];
-            return TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 200 + (index * 50)), // Staggered animation
-              tween: Tween(begin: 0.0, end: 1.0),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                return Transform.translate(
-                  offset: Offset(0, 20 * (1 - value)),
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
-                );
-              },
-              child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-                child: _buildRecipeCard(recipe),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                ),
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: scheme.primary,
+                  size: 18,
+                ),
               ),
-            );
-          },
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      recipe.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$totalMin min · ${recipe.servings} servings · '
+                      '${_capitalizeFirst(recipe.difficulty)}'
+                      '${tagPeek.isNotEmpty ? ' · $tagPeek' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                icon: Icon(Icons.more_vert_rounded,
+                    size: 20, color: scheme.onSurfaceVariant),
+                onSelected: (v) {
+                  if (v == 'delete') _deleteImportedListedRecipe(recipe);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _deleteImportedListedRecipe(ImportedRecipe recipe) async {
+    final confirm =
+        await AlertHelper.showDeleteConfirmation(context, recipe.name);
+    if (!confirm) return;
+    try {
+      await ImportedRecipeService.deleteByFoodId(recipe.foodId);
+      _loadCustomRecipes();
+      _loadCompoundFoods();
+      _loadAvailableRecipeTags();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe deleted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting recipe: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Widget _buildRecipeCard(CustomRecipe recipe) {

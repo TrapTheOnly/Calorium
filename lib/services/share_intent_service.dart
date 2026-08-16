@@ -70,7 +70,12 @@ class ShareIntentService {
       return;
     }
 
-    _openImport(resolved);
+    openImport(resolved);
+  }
+
+  /// Opens the import review screen for a URL (share sheet or in-app paste).
+  static void openImport(String url) {
+    _openImport(url);
   }
 
   static String? _extractUrl(String text) {

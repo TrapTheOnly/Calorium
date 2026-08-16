@@ -99,6 +99,88 @@ class AiService {
     return _buildGenerateContentUri(model, apiKey);
   }
 
+  static String _apiErrorMessage(String body) {
+    try {
+      final errorData = json.decode(body);
+      if (errorData is Map<String, dynamic> &&
+          errorData.containsKey('error')) {
+        final error = errorData['error'];
+        if (error is Map<String, dynamic> && error.containsKey('message')) {
+          return error['message'].toString();
+        }
+      }
+    } catch (_) {
+      return 'Failed to parse error response: $body';
+    }
+    return 'Unknown error';
+  }
+
+  /// Text-only Gemini call that reuses the same URI, API key, and
+  /// blockReason / finishReason / MAX_TOKENS handling as the image methods.
+  static Future<String> generateText({
+    required String prompt,
+    double temperature = 0.3,
+    int maxOutputTokens = 2048,
+    int topK = 40,
+    double topP = 0.95,
+    String fallbackModel = 'gemini-2.0-flash',
+    String context = 'text generation',
+  }) async {
+    try {
+      final apiKey = await SettingsService.getGeminiApiKey();
+      if (apiKey == null || apiKey.isEmpty) {
+        throw Exception(
+          'API key not set. Please configure your Gemini AI API key in settings.',
+        );
+      }
+
+      final requestUri = await _buildRequestUri(
+        apiKey,
+        fallbackModel: fallbackModel,
+      );
+
+      final requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {"text": prompt},
+            ],
+          },
+        ],
+        "generationConfig": {
+          "temperature": temperature,
+          "topK": topK,
+          "topP": topP,
+          "maxOutputTokens": maxOutputTokens,
+        },
+      };
+
+      final response = await http.post(
+        requestUri,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(requestBody),
+      );
+
+      print('AI generateText ($context) status: ${response.statusCode}');
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'API Error (${response.statusCode}): ${_apiErrorMessage(response.body)}',
+        );
+      }
+
+      final data = json.decode(response.body);
+      if (data == null || data is! Map<String, dynamic>) {
+        throw Exception('Invalid response structure from API');
+      }
+
+      return _extractResponseText(data, context);
+    } catch (e) {
+      print('AI generateText error ($context): $e');
+      rethrow;
+    }
+  }
+
   static Future<Map<String, dynamic>?> analyzeFood(
     File imageFile, {
     String? userPrompt,

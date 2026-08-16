@@ -1,40 +1,25 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/parsed_recipe.dart';
+import 'ai_service.dart';
+import 'recipe_import_prompts.dart';
 import 'settings_service.dart';
 import 'video_resolvers/video_resolver.dart';
 import 'video_resolvers/youtube_resolver.dart';
 import 'video_resolvers/instagram_resolver.dart';
 
 /// Orchestrates importing a recipe from a shared video link:
-///  1. resolve the link (download video + extract caption/description),
+///  1. resolve the link (caption/description + thumbnail),
 ///  2. ask Gemini to turn the text metadata into a structured recipe,
 ///  3. (separately) pick the nearest inventory item for unmatched ingredients
 ///     from a small pruned shortlist — never sending the full inventory.
 class RecipeImportService {
-  static const String _apiHost = 'generativelanguage.googleapis.com';
-  static const String _pathPrefix = '/v1beta/models/';
-  static const String _generateContentSuffix = ':generateContent';
-
   static final List<VideoResolver> _resolvers = [
     YouTubeResolver(),
     InstagramResolver(),
   ];
-
-  static Future<Uri> _buildRequestUri(
-    String apiKey, {
-    String fallbackModel = 'gemini-1.5-flash-latest',
-  }) async {
-    final model = await SettingsService.getGeminiModel(
-      fallbackModel: fallbackModel,
-    );
-    final normalized = SettingsService.normalizeGeminiModelName(model);
-    return Uri.https(
-      _apiHost,
-      '$_pathPrefix$normalized$_generateContentSuffix',
-      {'key': apiKey},
-    );
-  }
 
   /// Resolves the shared [url] to downloaded media + text metadata.
   static Future<ResolvedVideo> resolveLink(
@@ -52,58 +37,44 @@ class RecipeImportService {
   /// Sends only the video's text metadata to Gemini and returns a structured
   /// recipe. Throws with a friendly message when the API key is missing or the
   /// response can't be parsed.
-  static Future<ParsedRecipe> parseRecipe(ResolvedVideo resolved) async {
-    final apiKey = await SettingsService.getGeminiApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
+  ///
+  /// When [captionOverride] is non-empty, that text (plus any title already on
+  /// [resolved]) is parsed even if [ResolvedVideo.hasUsableText] is false.
+  static Future<ParsedRecipe> parseRecipe(
+    ResolvedVideo resolved, {
+    String? captionOverride,
+  }) async {
+    if (resolved.platform == VideoPlatform.unknown) {
       throw Exception(
-        'API key not set. Please configure your Gemini AI API key in settings.',
+        'This link is not a supported Instagram or YouTube recipe.',
       );
     }
 
-    if (!resolved.hasUsableText) {
+    final override = captionOverride?.trim() ?? '';
+    final toParse = override.isNotEmpty
+        ? resolved.copyWith(caption: override)
+        : resolved;
+
+    if (override.isEmpty && !toParse.hasUsableText) {
       throw Exception(
         'Could not read a caption or description from this link. The post may '
         'be private, or the platform blocked access.',
       );
     }
 
-    final prompt = _buildRecipePrompt(resolved);
-    final requestBody = {
-      "contents": [
-        {
-          "parts": [
-            {"text": prompt},
-          ],
-        },
-      ],
-      "generationConfig": {
-        "temperature": 0.3,
-        "topK": 40,
-        "topP": 0.95,
-        "maxOutputTokens": 2048,
-      },
-    };
-
-    final uri = await _buildRequestUri(apiKey);
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(requestBody),
+    final prompt = RecipeImportPrompts.recipeParser(
+      sourceText: toParse.combinedText,
+    );
+    final text = await AiService.generateText(
+      prompt: prompt,
+      temperature: 0.3,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 2048,
+      context: 'recipe import',
     );
 
-    if (response.statusCode != 200) {
-      final errorData = _tryDecode(response.body);
-      final message = errorData?['error']?['message'] ?? 'Unknown error';
-      throw Exception('API Error (${response.statusCode}): $message');
-    }
-
-    final data = json.decode(response.body);
-    final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
-    if (text is! String) {
-      throw Exception('No response from AI.');
-    }
-
-    final map = _decodeJsonObject(text);
+    final map = decodeJsonObject(text);
     if (map == null) {
       throw Exception('The AI returned an unexpected format. Please try again.');
     }
@@ -124,6 +95,10 @@ class RecipeImportService {
   /// [candidatesByIngredient] maps an ingredient name to a small list of
   /// inventory item names (the local matcher's top guesses). Returns a map from
   /// ingredient name to the chosen inventory name (absent when none fit).
+  ///
+  /// Returns `{}` when the API key is missing or the network is down so the
+  /// import review can still appear. Safety / API / structure errors are not
+  /// swallowed silently.
   static Future<Map<String, String>> suggestNearest(
     Map<String, List<String>> candidatesByIngredient,
   ) async {
@@ -143,48 +118,25 @@ class RecipeImportService {
         )
         .join('\n');
 
-    final prompt = '''
-You match recipe ingredients to a user's pantry. For each ingredient below,
-choose the SINGLE closest option from its candidate list (a reasonable
-substitute is fine). If none of the candidates is a sensible match, use null.
-
-INGREDIENTS AND CANDIDATES:
-$itemsText
-
-Respond with ONLY a valid JSON object mapping each ingredient name to the chosen
-candidate string (exactly as written) or null. Example:
-{"tomato": "Cherry tomatoes", "saffron": null}
-''';
+    final prompt = RecipeImportPrompts.nearestMatch(itemsText: itemsText);
 
     try {
-      final uri = await _buildRequestUri(apiKey);
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          "contents": [
-            {
-              "parts": [
-                {"text": prompt},
-              ],
-            },
-          ],
-          "generationConfig": {
-            "temperature": 0.1,
-            "topK": 1,
-            "topP": 1,
-            "maxOutputTokens": 512,
-          },
-        }),
+      final text = await AiService.generateText(
+        prompt: prompt,
+        temperature: 0.1,
+        topK: 1,
+        topP: 1,
+        maxOutputTokens: 512,
+        context: 'nearest match',
       );
 
-      if (response.statusCode != 200) return {};
-      final data = json.decode(response.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
-      if (text is! String) return {};
-
-      final map = _decodeJsonObject(text);
-      if (map == null) return {};
+      final map = decodeJsonObject(text);
+      if (map == null) {
+        print('suggestNearest: AI returned an unexpected format');
+        throw Exception(
+          'The AI returned an unexpected format for ingredient matches.',
+        );
+      }
 
       final result = <String, String>{};
       map.forEach((key, value) {
@@ -193,66 +145,18 @@ candidate string (exactly as written) or null. Example:
         }
       });
       return result;
-    } catch (_) {
-      return {};
+    } catch (e) {
+      if (_isTransientNetworkError(e)) {
+        print('suggestNearest network error: $e');
+        return {};
+      }
+      print('suggestNearest failed: $e');
+      rethrow;
     }
   }
 
-  static String _buildRecipePrompt(ResolvedVideo resolved) {
-    return '''
-You are a careful recipe parser. Below is the text (title, caption/description,
-and possibly a pinned comment) from a cooking video shared by a user.
-
-SOURCE TEXT:
-"""
-${resolved.combinedText}
-"""
-
-TASK:
-1. Decide whether this text describes a cookable food recipe. If it clearly does
-   NOT (e.g. it is a vlog, a product ad, or has no ingredients), set
-   "isRecipe": false and leave the other fields empty.
-2. If it IS a recipe, extract it. Infer sensible ingredient amounts when the
-   text is vague, and write clear step-by-step instructions even if the caption
-   only implies them.
-3. For EACH ingredient also estimate "amountGrams": the quantity in grams (or
-   millilitres for liquids) as a plain number, so nutrition can be computed.
-4. Mark spices/seasonings (salt, pepper, dried herbs, small flavourings) with
-   "isSpice": true. These are assumed always available.
-
-Respond with ONLY a valid JSON object in EXACTLY this shape, no extra text:
-
-{
-  "isRecipe": true,
-  "recipeName": "A short, appetising name",
-  "description": "One or two sentences describing the dish",
-  "servings": 2,
-  "prepTimeMinutes": 10,
-  "cookTimeMinutes": 20,
-  "difficulty": "easy|medium|hard",
-  "tags": ["dinner", "high-protein"],
-  "ingredients": [
-    {
-      "name": "chicken breast",
-      "amount": "200 g",
-      "amountGrams": 200,
-      "unit": "g",
-      "isSpice": false,
-      "notes": "diced"
-    }
-  ],
-  "instructions": ["Step 1 ...", "Step 2 ..."]
-}
-
-Rules:
-- "unit" must be "g" for solids or "ml" for liquids.
-- "amountGrams" must be a positive number (never a string).
-- Keep ingredient "name" short and generic (e.g. "olive oil", not "extra virgin
-  Italian olive oil"), so it is easy to match to a pantry.
-''';
-  }
-
-  static Map<String, dynamic>? _decodeJsonObject(String text) {
+  /// Strips markdown fences and surrounding prose, then decodes a JSON object.
+  static Map<String, dynamic>? decodeJsonObject(String text) {
     var cleaned = text.trim();
     if (cleaned.startsWith('```json')) {
       cleaned = cleaned.substring(7);
@@ -281,12 +185,22 @@ Rules:
     }
   }
 
-  static Map<String, dynamic>? _tryDecode(String body) {
-    try {
-      final decoded = json.decode(body);
-      return decoded is Map<String, dynamic> ? decoded : null;
-    } catch (_) {
-      return null;
+  static bool _isTransientNetworkError(Object error) {
+    if (error is SocketException ||
+        error is HandshakeException ||
+        error is HttpException ||
+        error is TimeoutException ||
+        error is http.ClientException) {
+      return true;
     }
+    final text = error.toString().toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('clientexception') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection refused') ||
+        text.contains('connection reset') ||
+        text.contains('network is unreachable') ||
+        text.contains('timed out') ||
+        text.contains('timeout');
   }
 }
