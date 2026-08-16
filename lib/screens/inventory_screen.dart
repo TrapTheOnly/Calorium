@@ -377,7 +377,10 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ImportedRecipeDetailScreen(recipe: recipe),
+        builder: (context) => ImportedRecipeDetailScreen(
+          recipe: recipe,
+          date: widget.date,
+        ),
       ),
     ).then((_) => onRefresh());
   }
@@ -1363,7 +1366,10 @@ class _InventoryScreenState extends State<InventoryScreen> with SingleTickerProv
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ImportedRecipeDetailScreen(recipe: recipe),
+              builder: (context) => ImportedRecipeDetailScreen(
+                recipe: recipe,
+                date: widget.date,
+              ),
             ),
           ).then((_) {
             _loadCustomRecipes();

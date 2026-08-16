@@ -17,11 +17,16 @@ import 'recipe_import_screen.dart';
 
 /// Detail view for a recipe imported from a shared video: shows the thumbnail,
 /// live nutrition + inventory-linked ingredients + instructions, links to the
-/// original, and logs servings to today.
+/// original, and logs servings to the date selected by the caller.
 class ImportedRecipeDetailScreen extends StatefulWidget {
-  const ImportedRecipeDetailScreen({super.key, required this.recipe});
+  const ImportedRecipeDetailScreen({
+    super.key,
+    required this.recipe,
+    this.date,
+  });
 
   final ImportedRecipe recipe;
+  final String? date;
 
   @override
   State<ImportedRecipeDetailScreen> createState() =>
@@ -78,6 +83,21 @@ class _ImportedRecipeDetailScreenState
   }
 
   int get _servings => _recipe.servings < 1 ? 1 : _recipe.servings;
+
+  String get _logDate {
+    final selected = widget.date?.trim();
+    if (selected != null && selected.isNotEmpty) return selected;
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  bool get _loggingToToday {
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    return _logDate == today;
+  }
 
   Map<String, double> get _totals {
     double cal = 0, prot = 0, carb = 0, fat = 0, weight = 0;
@@ -548,7 +568,13 @@ class _ImportedRecipeDetailScreenState
                     ),
                   )
                 : const Icon(Icons.add_rounded, size: 18),
-            label: Text(_isLogging ? 'Logging…' : 'Add to today'),
+            label: Text(
+              _isLogging
+                  ? 'Logging…'
+                  : _loggingToToday
+                      ? 'Add to today'
+                      : 'Add to selected day',
+            ),
           ),
         ],
       ),
@@ -616,12 +642,10 @@ class _ImportedRecipeDetailScreenState
       final portionSize =
           food.defaultPortionSize > 0 ? food.defaultPortionSize : 100.0;
       final amount = portionSize * servings;
-      final now = DateTime.now();
       final entry = LogEntry(
         foodId: food.id!,
         amount: amount,
-        date: '${now.year}-${now.month.toString().padLeft(2, '0')}-'
-            '${now.day.toString().padLeft(2, '0')}',
+        date: _logDate,
         portions: servings,
       );
 
@@ -639,9 +663,10 @@ class _ImportedRecipeDetailScreenState
       AlertHelper.showSuccessAlert(
         context,
         title: 'Recipe logged',
-        message:
-            '$servings serving(s) of ${_recipe.name} added to today.',
-        actionButtonText: 'View Today',
+        message: _loggingToToday
+            ? '$servings serving(s) of ${_recipe.name} added to today.'
+            : '$servings serving(s) of ${_recipe.name} added to $_logDate.',
+        actionButtonText: 'View Log',
         onActionPressed: () {
           Navigator.of(context).pop();
           Navigator.of(context).popUntil((route) => route.isFirst);
