@@ -63,6 +63,16 @@ void main() {
     expect(match.best!.food.name, 'Unsweetened coconut powder');
   });
 
+  test('generic milk does not strongly match Coconut milk', () {
+    final match = _match('milk', [_food(1, 'Coconut milk')]);
+    expect(match.confidence, isNot(MatchConfidence.strong));
+  });
+
+  test('generic powder does not strongly match Coconut powder', () {
+    final match = _match('powder', [_food(1, 'Coconut powder')]);
+    expect(match.confidence, isNot(MatchConfidence.strong));
+  });
+
   test('olive oil strongly matches Extra virgin olive oil', () {
     final match = _match(
       'olive oil',

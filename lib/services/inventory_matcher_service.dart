@@ -58,6 +58,13 @@ class InventoryMatcher {
     'clove', 'cloves', 'slice', 'slices', 'piece', 'pieces',
   };
 
+  // Descriptors that may be added by the pantry item without changing the
+  // ingredient's identity. Other extra tokens (for example, "coconut" in
+  // "coconut milk") keep a generic query from being auto-selected.
+  static const Set<String> _compatibleCandidateModifiers = {
+    'unsweetened',
+  };
+
   final List<Food> foods;
   final List<Set<String>> _tokenSets = [];
   final List<Set<String>> _formSets = [];
@@ -123,6 +130,10 @@ class InventoryMatcher {
     final formsMatch = _setEquals(queryForms, foodForms);
     final queryCovered = queryTokens.isNotEmpty &&
         queryTokens.every(foodTokens.contains);
+    final candidateOnlyTokens = foodTokens.difference(queryTokens);
+    final candidateAddsOnlyModifiers = candidateOnlyTokens.every(
+      _compatibleCandidateModifiers.contains,
+    );
 
     if (queryNorm.isEmpty || foodNorm.isEmpty) return 0;
     if (queryNorm == foodNorm) return 1.0;
@@ -163,9 +174,9 @@ class InventoryMatcher {
     if (!formsMatch) {
       // Form mismatch (powder vs milk vs flakes vs oil, or form vs none).
       score *= 0.15;
-    } else if (queryCovered) {
+    } else if (queryCovered && candidateAddsOnlyModifiers) {
       // True equivalent: distinctive query tokens (including form) are
-      // covered. Food may add modifiers (unsweetened, extra virgin).
+      // covered, and the pantry item adds only compatible modifiers.
       score = math.max(score, autoThreshold);
     }
 
